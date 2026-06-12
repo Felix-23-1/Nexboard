@@ -191,8 +191,8 @@ export default function Settings() {
               </div>
               <div className="card space-y-1">
                 <SettingsSection title="KI-Funktionen">
-                  <ToggleRow label="Log-Analyse" desc="KI liest Logs und erklärt was nicht stimmt" pro defaultOn />
-                  <ToggleRow label="KI-Alerts" desc="KI erklärt den Fehler und gibt Handlungsempfehlungen" pro defaultOn />
+                  <ToggleRow label="Log-Analyse" desc="KI liest Logs und erklärt was nicht stimmt" defaultOn />
+                  <ToggleRow label="KI-Alerts" desc="KI erklärt den Fehler und gibt Handlungsempfehlungen" defaultOn />
                   <ToggleRow label="Tägliche Zusammenfassung" desc="Automatische KI-Zusammenfassung der Infrastruktur" />
                 </SettingsSection>
               </div>
@@ -207,8 +207,8 @@ export default function Settings() {
                   <ToggleRow label="E-Mail (SMTP)"        desc="Eigener SMTP-Server" defaultOn />
                   <ToggleRow label="Discord"              desc="Webhook · #it-alerts" defaultOn />
                   <ToggleRow label="Slack"                desc="Webhook · #monitoring" />
-                  <ToggleRow label="Microsoft Teams"      desc="Incoming Webhook" pro />
-                  <ToggleRow label="Telegram"             desc="Bot-Token & Chat-ID" pro />
+                  <ToggleRow label="Microsoft Teams"      desc="Incoming Webhook"/>
+                  <ToggleRow label="Telegram"             desc="Bot-Token & Chat-ID"/>
                   <ToggleRow label="Webhook (Custom)"     desc="HTTP POST zu beliebiger URL" />
                 </SettingsSection>
               </div>
@@ -240,7 +240,7 @@ export default function Settings() {
                       <select className="nb-select"><option>5</option><option>10</option><option>Unbegrenzt</option></select>
                     </FormField>
                   </SettingsGrid>
-                  <ToggleRow label="2-Faktor-Authentifizierung" desc="TOTP via Authenticator-App" pro />
+                  <ToggleRow label="2-Faktor-Authentifizierung" desc="TOTP via Authenticator-App"/>
                 </SettingsSection>
               </div>
               <div className="card space-y-3">
@@ -285,7 +285,7 @@ function FormField({ label, children }) {
     </div>
   );
 }
-function ToggleRow({ label, desc, pro, defaultOn }) {
+function ToggleRow({ label, desc, defaultOn }) {
   const [on, setOn] = useState(!!defaultOn);
   return (
     <div
@@ -295,7 +295,7 @@ function ToggleRow({ label, desc, pro, defaultOn }) {
       <div>
         <div className="text-[12.5px] flex items-center gap-1.5" style={{ color: "rgba(255,255,255,0.75)" }}>
           {label}
-          {pro && <span className="badge-pro">Pro</span>}
+          {/*badge removed – all features free */}
         </div>
         {desc && <div className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.32)" }}>{desc}</div>}
       </div>

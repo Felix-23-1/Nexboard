@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Activity, Sparkles, Plug, KeyRound, Check, X, ChevronLeft, ChevronRight,
+  Activity, Sparkles, Plug, Check, X, ChevronLeft, ChevronRight,
   SkipForward, Eye, EyeOff,
 } from "lucide-react";
 import { api } from "../api/client";
@@ -10,7 +10,7 @@ const STEPS = [
   { key: "welcome", label: "Willkommen" },
   { key: "ai", label: "KI" },
   { key: "connector", label: "Connector" },
-  { key: "license", label: "Lizenz" },
+  { key: "support", label: "Support" },
   { key: "done", label: "Fertig" },
 ];
 
@@ -76,8 +76,8 @@ export default function Wizard() {
           {current.key === "connector" && (
             <ConnectorStep onNext={() => { markDone("connector"); next(); }} onSkip={next} onBack={back} />
           )}
-          {current.key === "license" && (
-            <LicenseStep onNext={() => { markDone("license"); next(); }} onSkip={next} onBack={back} />
+          {current.key === "support" && (
+            <SupportStep onNext={() => { markDone("support"); next(); }} onSkip={next} onBack={back} />
           )}
           {current.key === "done" && <DoneStep completed={completed} onFinish={finish} onBack={back} />}
         </div>
@@ -104,7 +104,6 @@ function WelcomeStep({ onNext, onSkipAll }) {
       <ul className="text-sm text-white/75 text-left bg-black/20 rounded-lg p-4 space-y-2 max-w-sm mx-auto">
         <li className="flex items-center gap-2"><Sparkles size={14} className="text-purple-400" /> KI-Provider für Analyse einrichten</li>
         <li className="flex items-center gap-2"><Plug size={14} className="text-amber-300" /> Ersten Service als Connector anbinden</li>
-        <li className="flex items-center gap-2"><KeyRound size={14} className="text-amber-300" /> Pro-Lizenz aktivieren (optional)</li>
       </ul>
       <div className="flex gap-3 justify-center pt-2">
         <button onClick={onSkipAll} className="btn-ghost text-sm">Direkt zum Dashboard</button>
@@ -357,25 +356,24 @@ function ConnectorStep({ onNext, onSkip, onBack }) {
   );
 }
 
-function LicenseStep({ onNext, onSkip, onBack }) {
+function SupportStep({ onNext, onSkip, onBack }) {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="font-semibold flex items-center gap-2">
-          <KeyRound size={16} className="text-amber-300" />
-          Nexboard ist kostenlos
-        </h2>
+        <h2 className="font-semibold text-lg">Nexboard ist kostenlos ☕</h2>
         <p className="text-white/40 text-xs mt-0.5">
-          Alle Features sind für alle Nutzer freigeschaltet. Kein Account, kein Abo, keine Limits.
+          Alle Features für alle – kein Abo, keine Limits, kein Account nötig.
         </p>
       </div>
-      <div className="bg-amber-400/5 border border-amber-400/15 rounded-lg px-4 py-3 text-xs text-white/55">
-        Wenn dir Nexboard gefällt, freuen wir uns über einen Kaffee ☕{" "}
+      <div className="bg-amber-400/5 border border-amber-400/15 rounded-lg px-4 py-4 space-y-2">
+        <p className="text-sm text-white/70">
+          Wenn dir Nexboard gefällt und du das Projekt unterstützen möchtest, freuen wir uns über einen Kaffee:
+        </p>
         <a
           href="https://ko-fi.com/nexboard"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-amber-300 underline"
+          className="inline-flex items-center gap-2 text-sm font-medium text-amber-300 underline underline-offset-2"
         >
           ko-fi.com/nexboard
         </a>
@@ -389,7 +387,6 @@ function DoneStep({ completed, onFinish, onBack }) {
   const items = [
     { key: "ai", label: "KI-Provider" },
     { key: "connector", label: "Connector" },
-    { key: "license", label: "Lizenz" },
   ];
   return (
     <div className="text-center space-y-5">

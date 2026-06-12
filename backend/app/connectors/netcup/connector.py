@@ -1,16 +1,13 @@
 """Netcup SCP (Server Control Panel) Connector.
-Nutzt die Netcup SCP Webservice API (JSON/SOAP-ähnlich) um vServer abzufragen.
-API-Doku: https://www.netcup-wiki.de/wiki/SCP_Webservice
+Nutzt die neue Netcup SCP REST API.
+API-Token im SCP erstellen: SCP → oben rechts → REST-API Doku
 """
 import httpx
 from ..base import BaseConnector, ConnectorMeta, ConnectorResult, ConnectorStatus
 
-_SCP_URL = "https://www.servercontrolpanel.de/SCP/WSEndUser"
-
-
-def _call(action: str, params: dict) -> dict:
-    """Baut einen SCP-Webservice-Request-Body."""
-    return {"action": action, "param": params}
+# Netcup hat die alte WSEndUser-API abgeschaltet.
+# Die neue REST-API läuft unter diesem Basis-URL.
+_SCP_BASE = "https://www.servercontrolpanel.de/SCP/api/v1"
 
 
 class NetcupConnector(BaseConnector):
@@ -20,97 +17,90 @@ class NetcupConnector(BaseConnector):
         description="Netcup SCP – vServer-Liste, Status und Traffic überwachen",
         icon="server",
         config_schema={
-            "customer_id": {
-                "type": "string", "label": "Kundennummer", "required": True,
-                "help": "Deine Netcup-Kundennummer (z.B. 123456)",
-            },
-            "api_key": {
-                "type": "string", "label": "API Key", "required": True, "secret": True,
-                "help": "Netcup CCP → Stammdaten → API → API Key",
-            },
-            "api_password": {
-                "type": "string", "label": "API Passwort", "required": True, "secret": True,
-                "help": "Netcup CCP → Stammdaten → API → API Passwort",
+            "api_token": {
+                "type": "string",
+                "label": "SCP API-Token",
+                "required": True,
+                "secret": True,
+                "placeholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                "hint": (
+                    "Im SCP erstellen: oben rechts → REST-API Doku → "
+                    "Authorize. Token hat die Form eines langen Hex-Strings."
+                ),
             },
         },
     )
 
     async def fetch(self) -> ConnectorResult:
-        customer_id  = str(self.config.get("customer_id", ""))
-        api_key      = self.config.get("api_key", "")
-        api_password = self.config.get("api_password", "")
+        token = self.config.get("api_token", "").strip()
 
-        if not customer_id or not api_key or not api_password:
-            return ConnectorResult(status=ConnectorStatus.ERROR, error="Kundennummer, API Key und API Passwort erforderlich")
+        if not token:
+            return ConnectorResult(
+                status=ConnectorStatus.ERROR,
+                error="SCP API-Token fehlt. Im Netcup SCP erstellen: oben rechts → REST-API Doku.",
+            )
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+        }
 
         try:
             async with httpx.AsyncClient(timeout=15) as client:
-                # 1. Login
-                login_r = await client.post(_SCP_URL, json=_call("login", {
-                    "customernumber": customer_id,
-                    "apikey":         api_key,
-                    "apipassword":    api_password,
-                }))
-                login_r.raise_for_status()
-                login_data = login_r.json()
+                # vServer-Liste abrufen
+                r = await client.get(f"{_SCP_BASE}/vservers", headers=headers)
 
-                if login_data.get("status") != "success":
-                    msg = login_data.get("longmessage") or login_data.get("shortmessage", "Login fehlgeschlagen")
-                    return ConnectorResult(status=ConnectorStatus.ERROR, error=msg)
+                if r.status_code == 401:
+                    return ConnectorResult(
+                        status=ConnectorStatus.ERROR,
+                        error="401 – API-Token ungültig oder abgelaufen. Neuen Token im SCP erstellen.",
+                    )
+                if r.status_code == 404:
+                    return ConnectorResult(
+                        status=ConnectorStatus.ERROR,
+                        error=(
+                            "404 – API-Endpunkt nicht gefunden. "
+                            "Netcup hat die API-URL möglicherweise geändert. "
+                            "Aktuelle Doku: SCP → oben rechts → REST-API Doku."
+                        ),
+                    )
 
-                session_id = login_data["responsedata"]["apisessionid"]
-
-                # 2. vServer-Liste
-                vservers_r = await client.post(_SCP_URL, json=_call("getVServers", {
-                    "customernumber": customer_id,
-                    "apikey":         api_key,
-                    "apisessionid":   session_id,
-                }))
-                vservers_data = vservers_r.json() if vservers_r.is_success else {}
-                vserver_names = vservers_data.get("responsedata", []) or []
+                r.raise_for_status()
+                vservers = r.json() if isinstance(r.json(), list) else r.json().get("data", [])
 
                 servers = []
-                for name in vserver_names[:20]:  # max 20 parallel
-                    info_r = await client.post(_SCP_URL, json=_call("getVServerInformation", {
-                        "customernumber": customer_id,
-                        "apikey":         api_key,
-                        "apisessionid":   session_id,
-                        "vservername":    name,
-                    }))
-                    if info_r.is_success:
-                        info = info_r.json().get("responsedata", {})
-                        servers.append({
-                            "name":      name,
-                            "status":    info.get("vserverstatus", "unknown"),
-                            "ipv4":      info.get("ipv4address"),
-                            "ipv6":      info.get("ipv6address"),
-                            "memory_mb": info.get("memory"),
-                            "cores":     info.get("cpucores"),
-                            "disk_gb":   info.get("harddisk"),
-                        })
+                for vs in vservers:
+                    name   = vs.get("name") or vs.get("vservername", "unbekannt")
+                    status = vs.get("status", "unknown")
+                    servers.append({
+                        "name":   name,
+                        "status": status,
+                        "ipv4":   vs.get("ipv4address") or vs.get("ipv4"),
+                        "ipv6":   vs.get("ipv6address") or vs.get("ipv6"),
+                    })
 
-                # 3. Logout
-                await client.post(_SCP_URL, json=_call("logout", {
-                    "customernumber": customer_id,
-                    "apikey":         api_key,
-                    "apisessionid":   session_id,
-                }))
-
-                running = [s for s in servers if s["status"] == "on"]
+                running = [s for s in servers if s["status"] in ("on", "running")]
                 stopped = [s for s in servers if s["status"] in ("off", "stopped")]
 
-                status = ConnectorStatus.WARNING if stopped else ConnectorStatus.ONLINE
-                if not servers:
-                    status = ConnectorStatus.ONLINE
-
-                return ConnectorResult(status=status, metrics={
-                    "servers_total":   len(servers),
-                    "servers_running": len(running),
-                    "servers_stopped": len(stopped),
-                    "servers":         servers,
-                })
+                return ConnectorResult(
+                    status=ConnectorStatus.WARNING if stopped else ConnectorStatus.ONLINE,
+                    metrics={
+                        "servers_total":   len(servers),
+                        "servers_running": len(running),
+                        "servers_stopped": len(stopped),
+                        "servers":         servers,
+                    },
+                )
 
         except httpx.ConnectError:
-            return ConnectorResult(status=ConnectorStatus.OFFLINE, error="Verbindung zu Netcup SCP fehlgeschlagen")
+            return ConnectorResult(
+                status=ConnectorStatus.OFFLINE,
+                error="Verbindung zu Netcup SCP fehlgeschlagen.",
+            )
+        except httpx.HTTPStatusError as e:
+            return ConnectorResult(
+                status=ConnectorStatus.ERROR,
+                error=f"HTTP {e.response.status_code}: {e.response.text[:300]}",
+            )
         except Exception as e:
             return ConnectorResult(status=ConnectorStatus.ERROR, error=str(e))
