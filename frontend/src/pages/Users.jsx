@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { UserPlus, Trash2, Pencil, Shield, User as UserIcon, Crown, Lock, Eye, EyeOff } from "lucide-react";
+import { UserPlus, Trash2, Pencil, Shield, User as UserIcon, Eye, EyeOff, Crown, Lock } from "lucide-react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { useLicense } from "../license/LicenseContext";
 
 const ROLE_BADGE = {
   admin: { label: "Admin", cls: "text-amber-300 bg-amber-400/15 border-amber-400/30", icon: Shield },
@@ -18,7 +17,6 @@ function fmtDate(value) {
 
 export default function Users() {
   const { user: me } = useAuth();
-  const { features } = useLicense();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -48,8 +46,6 @@ export default function Users() {
     }
   }
 
-  const limit = features.max_users;
-  const atLimit = limit != null && users.length >= limit;
   // Eigentümer = Benutzer mit der niedrigsten ID
   const ownerId = users.length > 0 ? Math.min(...users.map((u) => u.id)) : null;
   const canEditOwner = me?.id === ownerId;
@@ -61,37 +57,13 @@ export default function Users() {
           <h1 className="page-title">Benutzer</h1>
           <p className="text-white/40 text-sm mt-0.5">Konten und Rollen verwalten</p>
         </div>
-        {atLimit ? (
-          <Link to="/license" className="btn-primary flex items-center gap-2 text-sm">
-            <Crown size={14} /> Upgrade auf Pro
-          </Link>
-        ) : (
-          <button
-            onClick={() => setModal({ mode: "create" })}
-            className="btn-primary flex items-center gap-2 text-sm"
-          >
-            <UserPlus size={14} /> Benutzer anlegen
-          </button>
-        )}
+        <button
+          onClick={() => setModal({ mode: "create" })}
+          className="btn-primary flex items-center gap-2 text-sm"
+        >
+          <UserPlus size={14} /> Benutzer anlegen
+        </button>
       </div>
-
-      {limit != null && !loading && (
-        <div className={`flex items-center justify-between text-xs border rounded-lg px-3 py-2.5 ${
-          atLimit
-            ? "bg-yellow-400/10 border-yellow-400/25 text-yellow-400"
-            : "bg-white/7 border-white/10 text-white/55"
-        }`}>
-          <span className="flex items-center gap-2">
-            {atLimit ? <Crown size={13} /> : <Lock size={13} />}
-            {atLimit
-              ? "Multi-User ist ein Pro-Feature. Mit Pro legst du mehrere Benutzer mit Rollen an."
-              : `Free-Version: ${users.length} von ${limit} Benutzer genutzt.`}
-          </span>
-          <Link to="/license" className="font-medium underline whitespace-nowrap ml-3">
-            Pro freischalten
-          </Link>
-        </div>
-      )}
 
       {/* Rollen-Erklärung */}
       {!loading && (

@@ -8,7 +8,6 @@ from ..auth import get_current_user
 from ..database import get_db
 from ..models import ConnectorConfig, StatusSnapshot, User
 from ..connectors import registry
-from .license import get_current_license
 
 router = APIRouter(prefix="/status", tags=["status"], dependencies=[Depends(get_current_user)])
 
@@ -68,14 +67,7 @@ async def get_history(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Statusverlauf eines Connectors – nur für Pro-Nutzer."""
-    license_state = get_current_license(current_user)
-    if not license_state.features.get("history"):
-        raise HTTPException(
-            status_code=403,
-            detail="History & Trends ist ein Pro-Feature. Bitte Lizenz aktivieren.",
-        )
-
+    """Statusverlauf eines Connectors."""
     connector = await db.get(ConnectorConfig, connector_id)
     if not connector or connector.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Connector nicht gefunden")

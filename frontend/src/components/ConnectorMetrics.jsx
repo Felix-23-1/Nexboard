@@ -130,7 +130,21 @@ function ContainerRow({ c, connectorId }) {
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-medium truncate">{c.name}</div>
-          <div className="text-[11px] text-white/40 truncate">{c.image}</div>
+          <div className="text-[11px] text-white/40 flex items-center gap-1.5">
+                <span className="truncate">{c.image}</span>
+                {c.image_age != null && (
+                  <span
+                    className={`flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                      c.image_age > 90 ? "text-red-300 bg-red-400/10" :
+                      c.image_age > 30 ? "text-yellow-300 bg-yellow-400/10" :
+                      "text-white/30 bg-white/5"
+                    }`}
+                    title={`Image ist ${c.image_age} Tage alt`}
+                  >
+                    {c.image_age}d
+                  </span>
+                )}
+              </div>
         </div>
         <div className="text-right flex-shrink-0">
           <Pill tone={isRunning ? "ok" : c.state === "exited" ? "bad" : "warn"}>
@@ -730,6 +744,66 @@ function NetcupMetrics({ m }) {
   );
 }
 
+// --- Wake-on-LAN --------------------------------------------------------------
+
+function WolMetrics({ m }) {
+  return (
+    <div className="space-y-2">
+      <InfoLine items={[
+        ["Host", m.host],
+        ["MAC",  m.mac],
+      ]} />
+      <div className="flex items-center gap-2">
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded ${m.online ? "text-emerald-300 bg-green-400/10" : "text-white/40 bg-white/5"}`}>
+          {m.online ? "Online" : "Offline / Schläft"}
+        </span>
+        {!m.online && (
+          <span className="text-[11px] text-white/35">Wake-Up-Button in der Karte oben</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// --- TLS-Zertifikat -----------------------------------------------------------
+
+function TlsMetrics({ m }) {
+  const days = m.days_until_expiry ?? 0;
+  const color = days < 0 ? "text-red-400" : days < 7 ? "text-red-300" : days < 30 ? "text-yellow-300" : "text-emerald-300";
+  const barPct = Math.max(0, Math.min(100, (days / 90) * 100));
+  return (
+    <div className="space-y-3">
+      <InfoLine items={[
+        ["Domain",  m.host],
+        ["Aussteller", m.issuer_o || m.issuer_cn],
+        ["Ablauf",  m.not_after],
+      ]} />
+      <div className="bg-black/20 rounded-lg px-3 py-3 space-y-2">
+        <div className="flex items-baseline justify-between">
+          <span className="text-xs text-white/40">Tage bis Ablauf</span>
+          <span className={`text-2xl font-bold tabular-nums ${color}`}>
+            {days < 0 ? "Abgelaufen" : `${days} Tage`}
+          </span>
+        </div>
+        <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all"
+            style={{
+              width: `${barPct}%`,
+              background: days < 7 ? "#f87171" : days < 30 ? "#fbbf24" : "#34d399",
+            }}
+          />
+        </div>
+      </div>
+      {m.san?.length > 0 && (
+        <div className="text-[11px] text-white/35 space-y-0.5">
+          {m.san.map((s) => <div key={s}>· {s}</div>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Fallback -----------------------------------------------------------------
 
 function GenericMetrics({ m }) {
@@ -754,6 +828,8 @@ const RENDERERS = {
   cloudflare:     CloudflareMetrics,
   grafana:        GrafanaMetrics,
   netcup:         NetcupMetrics,
+  wol:            WolMetrics,
+  tls_monitor:    TlsMetrics,
 };
 
 export default function ConnectorMetrics({ type, metrics, connectorId }) {

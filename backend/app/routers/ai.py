@@ -8,7 +8,6 @@ from ..models import ConnectorConfig, User
 from ..connectors import registry
 from ..ai.analyzer import analyze, analyze_logs, chat
 from .settings import _get_setting
-from .license import get_current_license
 
 router = APIRouter(prefix="/ai", tags=["ai"], dependencies=[Depends(get_current_user)])
 
@@ -25,16 +24,6 @@ class LogAnalyzeRequest(BaseModel):
 class ChatRequest(BaseModel):
     question: str
     infra_context: str | None = None
-
-
-def _require_ai_pro(user: User):
-    """Stellt sicher, dass eine Pro-Lizenz für KI-Funktionen aktiv ist."""
-    license_state = get_current_license(user)
-    if not license_state.features["ai_analysis"]:
-        raise HTTPException(
-            status_code=403,
-            detail="KI-Funktionen sind ein Pro-Feature. Bitte aktiviere eine Pro-Lizenz unter Lizenz.",
-        )
 
 
 async def _get_ai_config(db: AsyncSession, user_id: int) -> dict:
@@ -58,7 +47,6 @@ async def analyze_connector(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _require_ai_pro(current_user)
 
     connector = await db.get(ConnectorConfig, req.connector_id)
     if not connector or connector.user_id != current_user.id:
@@ -98,7 +86,6 @@ async def analyze_log_text(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _require_ai_pro(current_user)
 
     if not req.logs or not req.logs.strip():
         raise HTTPException(status_code=400, detail="Keine Logdaten angegeben")
@@ -118,7 +105,6 @@ async def helpdesk_chat(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _require_ai_pro(current_user)
 
     if not req.question or not req.question.strip():
         raise HTTPException(status_code=400, detail="Keine Frage angegeben")

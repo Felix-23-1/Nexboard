@@ -7,6 +7,7 @@
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/get-docker/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Self-Hosted](https://img.shields.io/badge/Self--Hosted-yes-orange)](https://github.com/awesome-selfhosted/awesome-selfhosted)
+[![Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/nexboard)
 
 <!-- Add a screenshot here once you have one -->
 <!-- ![Nexboard Screenshot](docs/screenshot.png) -->
@@ -182,10 +183,10 @@ Nexboard is for the homelab user who wants to **actually manage their infrastruc
 
 - [ ] Kubernetes connector
 - [ ] Windows Server (WMI) connector
-- [ ] Wake-on-LAN
-- [ ] TLS certificate expiry monitor
+- [x] Wake-on-LAN
+- [x] TLS certificate expiry monitor
 - [ ] Mobile responsive layout
-- [ ] Docker image update checker
+- [x] Docker image update checker
 - [ ] Landing page + public release
 
 ---
@@ -211,6 +212,14 @@ nexboard/
 ```
 
 Adding a new connector is straightforward — see any existing connector in `backend/app/connectors/` as a template.
+
+---
+
+## Support the project
+
+If Nexboard is useful to you, a coffee is always appreciated ☕
+
+**[→ Ko-fi](https://ko-fi.com/nexboard)**
 
 ---
 

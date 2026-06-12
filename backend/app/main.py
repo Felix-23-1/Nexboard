@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .alerts.engine import start_background, stop_background
 from .database import init_db
-from .routers import connectors, status, settings, ai, auth, users, license, alerts, setup, proxmox, ssh, docker_ctrl
+from .routers import connectors, status, settings, ai, auth, users, license, alerts, setup, proxmox, ssh, docker_ctrl, wol
 
 
 @asynccontextmanager
@@ -47,6 +47,7 @@ app.include_router(setup.router, prefix="/api")
 app.include_router(proxmox.router, prefix="/api")
 app.include_router(ssh.router, prefix="/api")
 app.include_router(docker_ctrl.router, prefix="/api")
+app.include_router(wol.router, prefix="/api")
 
 
 @app.get("/api/health")

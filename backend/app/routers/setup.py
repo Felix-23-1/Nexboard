@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_current_user, require_admin
 from ..database import get_db
-from ..licensing import get_license_state
 from ..models import ConnectorConfig, Setting, User
 from .settings import _get_setting, _set_setting
 
@@ -47,14 +46,10 @@ async def get_setup_state(
     ai_key = await _get_setting(db, current_user.id, "ai_api_key")
     ai_configured = bool(ai_provider) and (ai_provider == "ollama" or bool(ai_key))
 
-    license_state = get_license_state(current_user.license_key)
-
     return {
         "wizard_completed": explicit or connector_count > 0,
         "ai_configured": ai_configured,
         "connector_count": connector_count,
-        "license_active": license_state.valid,
-        "license_plan": license_state.plan,
     }
 
 

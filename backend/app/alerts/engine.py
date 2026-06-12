@@ -1,8 +1,8 @@
 """Hintergrund-Engine für das Alert-System und History-Recording.
 
 Läuft in einer asyncio-Task neben dem FastAPI-Server.
-- Snapshots werden für ALLE User aufgezeichnet (unabhängig von Lizenz)
-- Alerts werden nur für User mit aktiver Pro-Lizenz verarbeitet
+- Snapshots werden für alle User aufgezeichnet
+- Alerts werden für alle User verarbeitet
 """
 import asyncio
 from datetime import datetime, timedelta
@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..connectors import registry
 from ..database import SessionLocal
-from ..licensing import get_license_state
 from ..models import AlertEvent, AlertRule, ConnectorConfig, NotificationChannel, StatusSnapshot, User
 from .senders import send_via
 
@@ -106,12 +105,8 @@ async def run_check_once() -> dict:
         for c in connectors:
             connectors_by_user.setdefault(c.user_id, []).append(c)
 
-        # Pro User: Alerts verarbeiten (nur wenn Pro-Lizenz aktiv)
+        # Alerts für alle User verarbeiten
         for user in users:
-            license_state = get_license_state(user.license_key)
-            if not license_state.features.get("alerts"):
-                continue
-
             user_connectors = connectors_by_user.get(user.id, [])
             if not user_connectors:
                 continue

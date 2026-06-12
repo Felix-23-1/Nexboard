@@ -13,21 +13,10 @@ from ..schemas import (
     EventOut,
     RuleCreate, RuleOut, RuleUpdate,
 )
-from .license import get_current_license
-
 router = APIRouter(prefix="/alerts", tags=["alerts"], dependencies=[Depends(get_current_user)])
 
 SECRET_KEYS = {"password", "webhook_url", "smtp_password", "api_key", "token"}
 MASK = "••••••••"
-
-
-def _require_alerts_pro(user: User):
-    state = get_current_license(user)
-    if not state.features.get("alerts"):
-        raise HTTPException(
-            status_code=403,
-            detail="Das Alert-System ist ein Pro-Feature. Bitte aktiviere eine Pro-Lizenz.",
-        )
 
 
 def _mask(config: dict) -> dict:
@@ -69,7 +58,6 @@ async def list_channels(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _require_alerts_pro(current_user)
     rows = (await db.execute(
         select(NotificationChannel)
         .where(NotificationChannel.user_id == current_user.id)
@@ -84,7 +72,6 @@ async def create_channel(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _require_alerts_pro(current_user)
     channel = NotificationChannel(user_id=current_user.id, name=data.name,
                                    type=data.type, config=data.config or {})
     db.add(channel)
@@ -100,7 +87,6 @@ async def update_channel(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _require_alerts_pro(current_user)
     channel = _own_channel(await db.get(NotificationChannel, channel_id), current_user.id)
     if data.name is not None:
         channel.name = data.name
@@ -119,7 +105,6 @@ async def delete_channel(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _require_alerts_pro(current_user)
     channel = _own_channel(await db.get(NotificationChannel, channel_id), current_user.id)
     await db.delete(channel)
     await db.commit()
@@ -131,7 +116,6 @@ async def test_channel(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _require_alerts_pro(current_user)
     channel = _own_channel(await db.get(NotificationChannel, channel_id), current_user.id)
     title = "Nexboard – Test-Benachrichtigung"
     body  = (f"Testnachricht von Nexboard.\nKanal: {channel.name} ({channel.type})\n"
@@ -150,7 +134,6 @@ async def list_rules(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _require_alerts_pro(current_user)
     rows = (await db.execute(
         select(AlertRule)
         .where(AlertRule.user_id == current_user.id)
@@ -165,7 +148,6 @@ async def create_rule(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _require_alerts_pro(current_user)
     if data.connector_ids:
         existing = (await db.execute(
             select(ConnectorConfig.id).where(
@@ -208,7 +190,6 @@ async def update_rule(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _require_alerts_pro(current_user)
     rule = _own_rule(await db.get(AlertRule, rule_id), current_user.id)
     if data.name is not None:           rule.name = data.name
     if data.enabled is not None:        rule.enabled = data.enabled
@@ -227,7 +208,6 @@ async def delete_rule(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _require_alerts_pro(current_user)
     rule = _own_rule(await db.get(AlertRule, rule_id), current_user.id)
     await db.delete(rule)
     await db.commit()
@@ -241,7 +221,6 @@ async def list_events(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _require_alerts_pro(current_user)
     rows = (await db.execute(
         select(AlertEvent)
         .where(AlertEvent.user_id == current_user.id)
@@ -257,6 +236,5 @@ async def list_events(
 async def trigger_check(
     current_user: User = Depends(get_current_user),
 ):
-    _require_alerts_pro(current_user)
     summary = await run_check_once()
     return summary

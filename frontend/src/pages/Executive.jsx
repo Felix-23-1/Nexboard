@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { api } from "../api/client";
-import { useLicense } from "../license/LicenseContext";
-import ProUpsell from "../components/ProUpsell";
 
 const TRAFFIC_LIGHT = {
   online: {
@@ -29,7 +27,6 @@ const TRAFFIC_LIGHT = {
 };
 
 export default function Executive() {
-  const { features, loading: licenseLoading } = useLicense();
   const [overview, setOverview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -47,32 +44,11 @@ export default function Executive() {
     }
   }
 
-  const allowed = features.executive_view;
-
   useEffect(() => {
-    if (!allowed) return;
     load();
     const iv = setInterval(() => load(true), 30000);
     return () => clearInterval(iv);
-  }, [allowed]);
-
-  if (licenseLoading) {
-    return <div className="flex items-center justify-center h-full text-white/40">Lädt...</div>;
-  }
-
-  if (!allowed) {
-    return (
-      <ProUpsell
-        title="Chef-Ansicht ist ein Pro-Feature"
-        description="Die Executive-Ansicht zeigt den Gesamtstatus auf einen Blick – ideal für Geschäftsführung und Management."
-        features={[
-          "Ampel-Status: grün / Warnung / kritisch",
-          "Vereinfachte Übersicht ohne technische Details",
-          "Ideal für nicht-technische Nutzer",
-        ]}
-      />
-    );
-  }
+  }, []);
 
   if (loading) {
     return <div className="flex items-center justify-center h-full text-white/40">Lädt...</div>;

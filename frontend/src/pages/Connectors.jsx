@@ -1,15 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Trash2, RefreshCw, ChevronDown, ChevronUp, Eye, EyeOff, Sparkles, Lock, Crown } from "lucide-react";
+import { Plus, Trash2, RefreshCw, ChevronDown, ChevronUp, Eye, EyeOff, Sparkles, Lock } from "lucide-react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { useLicense } from "../license/LicenseContext";
 import StatusBadge from "../components/StatusBadge";
 import ConnectorIcon from "../components/ConnectorIcon";
 
 export default function Connectors() {
   const { isAdmin } = useAuth();
-  const { features } = useLicense();
   const [connectors, setConnectors] = useState([]);
   const [types, setTypes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -66,9 +64,6 @@ export default function Connectors() {
     load();
   }, []);
 
-  const limit = features.max_connectors; // null = unbegrenzt (Pro)
-  const atLimit = limit != null && connectors.length >= limit;
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -78,47 +73,18 @@ export default function Connectors() {
             {isAdmin ? "Verwalte deine angebundenen Services" : "Übersicht deiner angebundenen Services"}
           </p>
         </div>
-        {isAdmin &&
-          (atLimit ? (
-            <Link to="/license" className="btn-primary flex items-center gap-2 text-sm">
-              <Crown size={14} />
-              Upgrade auf Pro
-            </Link>
-          ) : (
-            <button onClick={() => setShowAdd(true)} className="btn-primary flex items-center gap-2 text-sm">
-              <Plus size={14} />
-              Connector hinzufügen
-            </button>
-          ))}
+        {isAdmin && (
+          <button onClick={() => setShowAdd(true)} className="btn-primary flex items-center gap-2 text-sm">
+            <Plus size={14} />
+            Connector hinzufügen
+          </button>
+        )}
       </div>
 
       {!isAdmin && (
         <div className="flex items-start gap-2 text-xs text-white/40 bg-white/7 border border-white/10 rounded-lg px-3 py-2">
           <Lock size={13} className="flex-shrink-0 mt-0.5" />
           <span>Du hast Viewer-Rechte – Connectors können nur von Admins geändert werden.</span>
-        </div>
-      )}
-
-      {/* Free-Limit-Anzeige */}
-      {limit != null && !loading && (
-        <div
-          className={`flex items-center justify-between text-xs border rounded-lg px-3 py-2.5 ${
-            atLimit
-              ? "bg-yellow-400/10 border-yellow-400/25 text-yellow-400"
-              : "bg-white/7 border-white/10 text-white/55"
-          }`}
-        >
-          <span className="flex items-center gap-2">
-            {atLimit ? <Crown size={13} /> : <Lock size={13} />}
-            {atLimit
-              ? `Free-Limit erreicht: ${connectors.length} von ${limit} Connectors. Mit Pro bindest du beliebig viele Services an.`
-              : `Free-Version: ${connectors.length} von ${limit} Connectors genutzt.`}
-          </span>
-          {isAdmin && (
-            <Link to="/license" className="font-medium underline whitespace-nowrap ml-3">
-              Pro freischalten
-            </Link>
-          )}
         </div>
       )}
 
@@ -160,13 +126,9 @@ export default function Connectors() {
                       onClick={() => runAiAnalysis(c.id)}
                       className="btn-ghost text-xs flex items-center gap-1 text-purple-400 hover:text-purple-300"
                       disabled={aiLoading[c.id]}
-                      title={features.ai_analysis ? "KI-Analyse starten" : "KI-Analyse ist ein Pro-Feature"}
+                      title="KI-Analyse starten"
                     >
-                      {features.ai_analysis ? (
-                        <Sparkles size={12} className={aiLoading[c.id] ? "animate-pulse" : ""} />
-                      ) : (
-                        <Lock size={12} />
-                      )}
+                      <Sparkles size={12} className={aiLoading[c.id] ? "animate-pulse" : ""} />
                       KI
                     </button>
                     {isAdmin && (

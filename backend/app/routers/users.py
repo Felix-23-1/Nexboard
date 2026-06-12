@@ -6,8 +6,6 @@ from ..auth import get_current_user, hash_password, require_admin
 from ..database import get_db
 from ..models import User
 from ..schemas import UserCreate, UserOut, UserUpdate
-from .license import get_current_license
-
 router = APIRouter(prefix="/users", tags=["users"])
 
 
@@ -51,17 +49,6 @@ async def create_user(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    # Free-Limit: Multi-User ist ein Pro-Feature
-    license_state = get_current_license(admin)
-    limit = license_state.features["max_users"]
-    if limit is not None:
-        count = await _user_count(db)
-        if count >= limit:
-            raise HTTPException(
-                status_code=403,
-                detail=f"Free-Version: maximal {limit} Benutzer. Mit Pro kannst du mehrere Benutzer anlegen.",
-            )
-
     username = data.username.strip()
     existing = await db.execute(select(User).where(User.username == username))
     if existing.scalar_one_or_none():

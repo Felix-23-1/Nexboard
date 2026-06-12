@@ -1,10 +1,9 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Server, Plug, Bell, Settings,
-  Users, KeyRound, Compass, LogOut, Activity,
+  Users, Compass, LogOut, Activity,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
-import { useLicense } from "../license/LicenseContext";
 
 const NAV_TOP = [
   { to: "/dashboard",  icon: LayoutDashboard, label: "Dashboard" },
@@ -15,14 +14,12 @@ const NAV_TOP = [
 ];
 
 const NAV_BOTTOM = [
-  { to: "/users",   icon: Users,    label: "Benutzer",        adminOnly: true },
-  { to: "/license", icon: KeyRound, label: "Lizenz",          adminOnly: true },
-  { to: "/wizard",  icon: Compass,  label: "Setup-Assistent", adminOnly: true },
+  { to: "/users",   icon: Users,   label: "Benutzer",        adminOnly: true },
+  { to: "/wizard",  icon: Compass, label: "Setup-Assistent", adminOnly: true },
 ];
 
 export default function Sidebar() {
   const { user, isAdmin, logout } = useAuth();
-  const { isPro } = useLicense();
   const navigate = useNavigate();
 
   const filterItems = (items) => items.filter((i) => !i.adminOnly || isAdmin);
@@ -41,7 +38,7 @@ export default function Sidebar() {
     >
       {/* Logo icon */}
       <div
-        className="flex items-center justify-center rounded-xl mb-1"
+        className="flex items-center justify-center rounded-xl mb-3"
         style={{
           width: 36, height: 36,
           background: "rgba(245,158,11,0.18)",
@@ -51,26 +48,6 @@ export default function Sidebar() {
         title="Nexboard"
       >
         <Activity size={17} />
-      </div>
-
-      {/* Pro / Free badge */}
-      <div
-        className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded mb-2"
-        style={
-          isPro
-            ? {
-                background: "rgba(245,158,11,0.16)",
-                color: "#FCD34D",
-                border: "1px solid rgba(245,158,11,0.3)",
-              }
-            : {
-                background: "rgba(255,255,255,0.06)",
-                color: "rgba(255,255,255,0.28)",
-                border: "1px solid rgba(255,255,255,0.1)",
-              }
-        }
-      >
-        {isPro ? "Pro" : "Free"}
       </div>
 
       {/* Top navigation */}

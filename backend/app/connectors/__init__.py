@@ -12,6 +12,8 @@ from .cloudflare.connector import CloudflareConnector
 from .grafana.connector import GrafanaConnector
 from .linux_ssh.connector import LinuxSSHConnector
 from .netcup.connector import NetcupConnector
+from .wol.connector import WolConnector
+from .tls_monitor.connector import TlsMonitorConnector
 
 registry.register("proxmox",        ProxmoxConnector)
 registry.register("docker",         DockerConnector)
@@ -26,5 +28,7 @@ registry.register("cloudflare",     CloudflareConnector)
 registry.register("grafana",        GrafanaConnector)
 registry.register("linux_ssh",      LinuxSSHConnector)
 registry.register("netcup",         NetcupConnector)
+registry.register("wol",            WolConnector)
+registry.register("tls_monitor",    TlsMonitorConnector)
 
 __all__ = ["registry"]

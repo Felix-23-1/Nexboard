@@ -8,7 +8,6 @@ from ..database import get_db
 from ..models import ConnectorConfig, User
 from ..schemas import ConnectorConfigCreate, ConnectorConfigUpdate, ConnectorConfigOut, ConnectorStatusOut, ConnectorTypeOut
 from ..connectors import registry
-from .license import get_current_license
 
 router = APIRouter(prefix="/connectors", tags=["connectors"], dependencies=[Depends(get_current_user)])
 
@@ -53,20 +52,6 @@ async def create_connector(
 ):
     if not registry.get(data.type):
         raise HTTPException(status_code=400, detail=f"Unbekannter Connector-Typ: {data.type}")
-
-    # Free-Limit pro User durchsetzen
-    license_state = get_current_license(current_user)
-    limit = license_state.features["max_connectors"]
-    if limit is not None:
-        count = (await db.execute(
-            select(func.count()).select_from(ConnectorConfig)
-            .where(ConnectorConfig.user_id == current_user.id)
-        )).scalar_one()
-        if count >= limit:
-            raise HTTPException(
-                status_code=403,
-                detail=f"Free-Version: maximal {limit} Connectors. Aktiviere Pro für unbegrenzte Connectors.",
-            )
 
     connector = ConnectorConfig(
         user_id=current_user.id,

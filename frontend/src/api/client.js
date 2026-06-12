@@ -96,6 +96,10 @@ export const api = {
         body: JSON.stringify({ command }),
       }),
   },
+  wol: {
+    wake: (connectorId) =>
+      request(`/wol/${connectorId}/wake`, { method: "POST" }),
+  },
   setup: {
     state: () => request("/setup"),
     complete: () => request("/setup/complete", { method: "POST" }),

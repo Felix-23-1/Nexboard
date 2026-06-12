@@ -5,8 +5,6 @@ import {
   Eye, EyeOff, Webhook, Smartphone,
 } from "lucide-react";
 import { api } from "../api/client";
-import { useLicense } from "../license/LicenseContext";
-import ProUpsell from "../components/ProUpsell";
 
 // ── Channel type metadata (email, discord, slack, teams, telegram, webhook) ──
 const TYPE_META = {
@@ -15,42 +13,36 @@ const TYPE_META = {
     icon: Mail,
     iconBg: "rgba(59,130,246,0.18)",
     iconColor: "#93c5fd",
-    pro: false,
   },
   discord: {
     label: "Discord",
     icon: MessageSquare,
     iconBg: "rgba(99,102,241,0.18)",
     iconColor: "#a5b4fc",
-    pro: false,
   },
   slack: {
     label: "Slack",
     icon: Hash,
     iconBg: "rgba(236,72,153,0.15)",
     iconColor: "#f9a8d4",
-    pro: false,
   },
   teams: {
     label: "Microsoft Teams",
     icon: Send,
     iconBg: "rgba(91,111,247,0.18)",
     iconColor: "#a5b4fc",
-    pro: true,
   },
   telegram: {
     label: "Telegram",
     icon: Smartphone,
     iconBg: "rgba(14,165,233,0.18)",
     iconColor: "#7dd3fc",
-    pro: true,
   },
   webhook: {
     label: "Webhook (Custom)",
     icon: Webhook,
     iconBg: "rgba(20,184,166,0.18)",
     iconColor: "#5eead4",
-    pro: false,
   },
 };
 
@@ -68,31 +60,7 @@ function Divider() {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function Alerts() {
-  const { features, loading: licenseLoading } = useLicense();
   const [tab, setTab] = useState("channels");
-
-  if (licenseLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <span className="text-sm" style={{ color: "rgba(255,255,255,0.3)" }}>Lädt…</span>
-      </div>
-    );
-  }
-
-  if (!features.alerts) {
-    return (
-      <ProUpsell
-        title="Alert-System ist ein Pro-Feature"
-        description="Lass dich automatisch benachrichtigen, sobald ein System ausfällt oder kritisch wird."
-        features={[
-          "E-Mail-Versand über deinen eigenen SMTP-Server",
-          "Discord-, Slack-, Teams- und Telegram-Webhooks",
-          "Regeln pro Connector mit Cooldown gegen Spam",
-          "Verlauf aller ausgelösten Alarme",
-        ]}
-      />
-    );
-  }
 
   return (
     <div className="flex flex-col" style={{ minHeight: "100%" }}>
@@ -211,7 +179,6 @@ function ChannelsTab() {
               <div>
                 <div className="text-[12px] font-medium" style={{ color: "rgba(255,255,255,0.78)" }}>
                   {meta.label}
-                  {meta.pro && <span className="badge-pro ml-1.5">Pro</span>}
                 </div>
                 <div className="text-[10.5px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>
                   + Einrichten
@@ -325,7 +292,6 @@ function ChannelForm({ type, existing, onSave, onCancel }) {
           <div>
             <div className="text-[14px] font-medium" style={{ color: "rgba(255,255,255,0.88)" }}>
               {meta.label} einrichten
-              {meta.pro && <span className="badge-pro ml-2">Pro</span>}
             </div>
             <div className="text-[11px]" style={{ color: "rgba(255,255,255,0.32)" }}>
               Alert-Kanal konfigurieren

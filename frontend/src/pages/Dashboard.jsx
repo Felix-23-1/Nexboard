@@ -37,6 +37,8 @@ const TYPE_ICON = {
   grafana:        "bar-chart-2",
   linux_ssh:      "terminal",
   netcup:         "server",
+  wol:            "zap",
+  tls_monitor:    "lock",
 };
 const TYPE_LABEL = {
   proxmox:        "Proxmox VE",
@@ -52,6 +54,8 @@ const TYPE_LABEL = {
   grafana:        "Grafana",
   linux_ssh:      "Linux Server",
   netcup:         "Netcup",
+  wol:            "Wake-on-LAN",
+  tls_monitor:    "TLS-Zertifikat",
 };
 
 function fmt(n) { return n != null ? String(n) : "–"; }
@@ -190,6 +194,25 @@ function ConnectorPreview({ type, metrics: m }) {
         {row("Server", fmt(m.servers_total))}
         {row("Laufen", fmt(m.servers_running), true)}
         {row("Gestoppt", fmt(m.servers_stopped))}
+      </div>
+    );
+  }
+  if (type === "wol") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+        {row("Host", m.host ?? "–")}
+        {row("MAC", m.mac ?? "–")}
+        {row("Status", m.online ? "Online" : "Offline", m.online)}
+      </div>
+    );
+  }
+  if (type === "tls_monitor") {
+    const days = m.days_until_expiry ?? 0;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+        {row("Domain", m.host ?? "–")}
+        {row("Tage bis Ablauf", days < 0 ? "Abgelaufen!" : fmt(days), days > 14)}
+        {row("Aussteller", m.issuer_o || m.issuer_cn || "–")}
       </div>
     );
   }

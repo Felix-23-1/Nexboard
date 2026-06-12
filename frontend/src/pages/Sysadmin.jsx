@@ -6,13 +6,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  RefreshCw, Sparkles, Lock, AlertTriangle,
+  RefreshCw, Sparkles, AlertTriangle,
   Power, RotateCcw, Monitor,
   Terminal, ExternalLink, Package, ChevronDown, TerminalSquare,
-  GripVertical, Plug, History, Globe, Play, Square, RefreshCcw,
+  GripVertical, Plug, History, Globe, Play, Square, RefreshCcw, Zap,
 } from "lucide-react";
 import { api } from "../api/client";
-import { useLicense } from "../license/LicenseContext";
 import StatusBadge from "../components/StatusBadge";
 import ConnectorIcon from "../components/ConnectorIcon";
 import ConnectorMetrics from "../components/ConnectorMetrics";
@@ -33,6 +32,8 @@ const TYPE_ICON = {
   grafana:        "bar-chart-2",
   linux_ssh:      "terminal",
   netcup:         "server",
+  wol:            "zap",
+  tls_monitor:    "lock",
 };
 
 const TYPE_LABEL = {
@@ -49,6 +50,8 @@ const TYPE_LABEL = {
   grafana:        "Grafana",
   linux_ssh:      "Linux Server",
   netcup:         "Netcup",
+  wol:            "Wake-on-LAN",
+  tls_monitor:    "TLS-Zertifikat",
 };
 
 const SEVERITY = {
@@ -83,7 +86,6 @@ function getServiceUrl(c) {
 /* ── Hauptseite ─────────────────────────────────────────────────────── */
 
 export default function Sysadmin() {
-  const { features }    = useLicense();
   const [data, setData]         = useState(null);
   const [loading, setLoading]   = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -237,8 +239,8 @@ export default function Sysadmin() {
                 allConnectors={connectors}
                 aiResult={aiResults[c.id]}
                 aiLoading={aiLoading[c.id]}
-                proEnabled={features.ai_analysis}
-                historyEnabled={features.history}
+                proEnabled={true}
+                historyEnabled={true}
                 dragging={dragId.current === c.id}
                 onRunAi={() => runAi(c.id)}
                 onDragStart={() => handleDragStart(c.id)}
@@ -257,7 +259,7 @@ export default function Sysadmin() {
 
 function ConnectorCard({
   connector: c, allConnectors,
-  aiResult, aiLoading: aiLoad, proEnabled, historyEnabled,
+  aiResult, aiLoading: aiLoad,
   dragging, onRunAi, onDragStart, onDragOver, onDrop,
 }) {
   const [sshTermOpen, setSshTermOpen] = useState(false);
@@ -352,13 +354,9 @@ function ConnectorCard({
           disabled={aiLoad}
           className="btn-ghost"
           style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, padding: "5px 11px" }}
-          title={proEnabled ? "KI-Analyse starten" : "KI-Analyse ist ein Pro-Feature"}
+          title="KI-Analyse starten"
         >
-          {proEnabled ? (
-            <Sparkles size={12} className={aiLoad ? "animate-pulse" : ""} />
-          ) : (
-            <Lock size={12} />
-          )}
+          <Sparkles size={12} className={aiLoad ? "animate-pulse" : ""} />
           KI-Analyse
         </button>
       </div>
@@ -401,6 +399,9 @@ function ConnectorCard({
       )}
       {c.type === "linux_ssh" && <ScriptRunner connectorId={c.id} />}
 
+      {/* ── Wake-on-LAN Button ────────────────────────────────── */}
+      {c.type === "wol" && <WolButton connectorId={c.id} isOnline={c.status === "online"} />}
+
       {/* ── SSH-Hinweis (TrueNAS, Synology, Proxmox Backup) ─────── */}
       {(c.type === "truenas" || c.type === "synology" || c.type === "proxmox_backup") && (
         <SshHint config={c.config} />
@@ -410,7 +411,7 @@ function ConnectorCard({
       {aiResult && <AiBlock result={aiResult} />}
 
       {/* ── History & Trends ──────────────────────────────────────── */}
-      <HistoryBlock connectorId={c.id} proEnabled={historyEnabled} />
+      <HistoryBlock connectorId={c.id} />
     </div>
   );
 }
@@ -783,7 +784,7 @@ function StatusTimeline({ snapshots }) {
   );
 }
 
-function HistoryBlock({ connectorId, proEnabled }) {
+function HistoryBlock({ connectorId }) {
   const [open, setOpen]       = useState(false);
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(false);
@@ -804,7 +805,7 @@ function HistoryBlock({ connectorId, proEnabled }) {
   function toggle() {
     const next = !open;
     setOpen(next);
-    if (next && !data && proEnabled) load();
+    if (next && !data) load();
   }
 
   return (
@@ -827,7 +828,6 @@ function HistoryBlock({ connectorId, proEnabled }) {
         }}>
           <History size={11} />
           Verlauf (24h)
-          {!proEnabled && <Lock size={9} style={{ opacity: 0.5 }} />}
         </div>
         <ChevronDown
           size={13}
@@ -842,16 +842,7 @@ function HistoryBlock({ connectorId, proEnabled }) {
       {/* Inhalt */}
       {open && (
         <div style={{ padding: "8px 8px 4px" }}>
-          {!proEnabled ? (
-            <div style={{
-              fontSize: 11, color: "var(--text-3)",
-              background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.12)",
-              borderRadius: 8, padding: "8px 12px",
-            }}>
-              <Lock size={10} style={{ display: "inline", marginRight: 5, color: "#F59E0B" }} />
-              History & Trends ist ein <span style={{ color: "#F59E0B", fontWeight: 600 }}>Pro-Feature</span>.
-            </div>
-          ) : loading ? (
+          {loading ? (
             <span style={{ fontSize: 11, color: "var(--text-3)" }}>Lade Verlauf…</span>
           ) : err ? (
             <span style={{ fontSize: 11, color: "#f87171" }}>{err}</span>
@@ -862,6 +853,62 @@ function HistoryBlock({ connectorId, proEnabled }) {
           ) : (
             <StatusTimeline snapshots={data.snapshots} />
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Wake-on-LAN Button ──────────────────────────────────────────── */
+
+function WolButton({ connectorId, isOnline }) {
+  const [sending, setSending]   = useState(false);
+  const [feedback, setFeedback] = useState(null);
+
+  async function wake() {
+    setSending(true); setFeedback(null);
+    try {
+      await api.wol.wake(connectorId);
+      setFeedback({ ok: true, msg: "Magic Packet gesendet – Gerät startet…" });
+    } catch (e) {
+      setFeedback({ ok: false, msg: e.message });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <button
+          onClick={wake}
+          disabled={sending || isOnline}
+          className="vm-btn vm-btn-teal"
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            fontSize: 11.5, padding: "6px 14px", borderRadius: 7,
+            opacity: (sending || isOnline) ? 0.5 : 1,
+            cursor: (sending || isOnline) ? "default" : "pointer",
+          }}
+          title={isOnline ? "Gerät ist bereits online" : "Magic Packet senden"}
+        >
+          <Zap size={12} className={sending ? "animate-pulse" : ""} />
+          {sending ? "Sende…" : "Wake Up"}
+        </button>
+        {isOnline && (
+          <span style={{ fontSize: 11, color: "#34d399" }}>
+            Gerät ist bereits online
+          </span>
+        )}
+      </div>
+      {feedback && (
+        <div style={{
+          fontSize: 11, padding: "6px 10px", borderRadius: 8,
+          color: feedback.ok ? "#34d399" : "#f87171",
+          background: feedback.ok ? "rgba(52,211,153,0.07)" : "rgba(248,113,113,0.07)",
+          border: `1px solid ${feedback.ok ? "rgba(52,211,153,0.2)" : "rgba(248,113,113,0.2)"}`,
+        }}>
+          {feedback.msg}
         </div>
       )}
     </div>
