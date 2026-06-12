@@ -1,0 +1,53 @@
+services:
+  backend:
+    build: ./backend
+    image: nexboard-backend
+    container_name: nexboard-backend
+    restart: unless-stopped
+    volumes:
+      # Persistentes Datenverzeichnis: SQLite-DB + JWT-Secret-Datei
+      - nexboard-data:/app/data
+    environment:
+      - ENV=production
+      - NEXBOARD_DATA_DIR=/app/data
+      # JWT-Secret: Wird aus .env geladen. Falls leer → auto-generiert und in /app/data gespeichert.
+      - NEXBOARD_JWT_SECRET=${NEXBOARD_JWT_SECRET:-}
+      # CORS_ORIGINS: Nur nötig bei direktem API-Zugriff (ohne nginx-Proxy).
+      # Bei Standard-Betrieb über nginx kann dieser Wert leer bleiben.
+      - CORS_ORIGINS=${CORS_ORIGINS:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - nexboard
+
+  frontend:
+    build: ./frontend
+    image: nexboard-frontend
+    container_name: nexboard-frontend
+    restart: unless-stopped
+    ports:
+      # Port aus .env – Standard: 8080. Ändern falls belegt: PORT=8090
+      - "${PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - nexboard
+
+networks:
+  nexboard:
+    driver: bridge
+
+volumes:
+  nexboard-data:
+    name: nexboard-data

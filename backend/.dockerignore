@@ -1,0 +1,12 @@
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+nexboard.db
+nexboard.db-journal
+.jwt_secret
+.DS_Store
+data
+.env
+tools
