@@ -63,13 +63,21 @@ class NetcupConnector(BaseConnector):
                     "apipassword":    api_password,
                 }))
                 login_r.raise_for_status()
-                login_data = login_r.json()
+                try:
+                    login_data = login_r.json()
+                except Exception:
+                    return ConnectorResult(
+                        status=ConnectorStatus.ERROR,
+                        error=f"Netcup API hat keine gültige JSON-Antwort geliefert. Status: {login_r.status_code}, Body: {login_r.text[:200]}",
+                    )
 
                 if login_data.get("status") != "success":
                     msg = login_data.get("longmessage") or login_data.get("shortmessage", "Login fehlgeschlagen")
                     return ConnectorResult(status=ConnectorStatus.ERROR, error=f"Login: {msg}")
 
-                session_id = login_data["responsedata"]["apisessionid"]
+                session_id = login_data.get("responsedata", {}).get("apisessionid")
+                if not session_id:
+                    return ConnectorResult(status=ConnectorStatus.ERROR, error="Kein Session-Token erhalten.")
 
                 # 2. vServer-Liste
                 vs_r = await client.post(_CCP_URL, json=_call("getVServers", {
@@ -77,7 +85,10 @@ class NetcupConnector(BaseConnector):
                     "apikey":         api_key,
                     "apisessionid":   session_id,
                 }))
-                vs_data = vs_r.json() if vs_r.is_success else {}
+                try:
+                    vs_data = vs_r.json() if vs_r.is_success else {}
+                except Exception:
+                    vs_data = {}
                 vserver_names = vs_data.get("responsedata", []) or []
 
                 servers = []
