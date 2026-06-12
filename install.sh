@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════
-#  Nexboard – One-Shot Installer
+#  Nexboard – Installer
 #  Verwendung: bash install.sh
 #  Voraussetzungen: Docker + Docker Compose Plugin
 # ═══════════════════════════════════════════════════════════
@@ -33,56 +33,34 @@ echo ""
 info "Prüfe Voraussetzungen…"
 
 if ! command -v docker &>/dev/null; then
-  error "Docker nicht gefunden. Installation: https://docs.docker.com/get-docker/"
+  error "Docker nicht gefunden. Installation: curl -fsSL https://get.docker.com | sh"
 fi
 
 if ! docker compose version &>/dev/null; then
-  error "Docker Compose Plugin nicht gefunden. Bitte Docker aktualisieren (v2.0+)."
+  error "Docker Compose Plugin nicht gefunden. Installieren: sudo apt install docker-compose-plugin"
 fi
 
 DOCKER_V=$(docker --version | grep -oP '[\d]+\.[\d]+\.[\d]+' | head -1)
 COMPOSE_V=$(docker compose version --short 2>/dev/null || echo "?")
 success "Docker ${DOCKER_V} · Compose ${COMPOSE_V}"
 
-# ── 2. Installationsverzeichnis ────────────────────────────
-INSTALL_DIR="${1:-$(pwd)/nexboard}"
-
-if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
-  warn "Nexboard scheint bereits installiert zu sein unter: $INSTALL_DIR"
-  read -rp "  Trotzdem fortfahren? [j/N] " confirm
-  [[ "$confirm" =~ ^[jJyY]$ ]] || { echo "Abgebrochen."; exit 0; }
-fi
-
-info "Installationsverzeichnis: ${BOLD}$INSTALL_DIR${RESET}"
-mkdir -p "$INSTALL_DIR"
-cd "$INSTALL_DIR"
-
-# ── 3. Dateien herunterladen oder kopieren ─────────────────
-# Wenn das Skript aus dem Nexboard-Verzeichnis ausgeführt wird,
-# direkt verwenden. Sonst von GitHub laden (wenn Repo public ist).
-
+# ── 2. Sicherstellen dass wir im Nexboard-Quellordner sind ──
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-if [ -f "$SCRIPT_DIR/docker-compose.yml" ] && [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
-  info "Kopiere Dateien aus Quellverzeichnis…"
-  cp "$SCRIPT_DIR/docker-compose.yml" .
-  cp -r "$SCRIPT_DIR/backend" .
-  cp -r "$SCRIPT_DIR/frontend" .
-  [ -f "$SCRIPT_DIR/.env.example" ] && cp "$SCRIPT_DIR/.env.example" .
-  success "Dateien kopiert"
-elif [ -f "$SCRIPT_DIR/docker-compose.yml" ] && [ "$SCRIPT_DIR" = "$INSTALL_DIR" ]; then
-  success "Dateien bereits vorhanden"
-else
-  error "Bitte install.sh aus dem Nexboard-Quellverzeichnis ausführen."
+if [ ! -f "docker-compose.yml" ]; then
+  error "docker-compose.yml nicht gefunden. Bitte install.sh aus dem geklonten Nexboard-Ordner ausführen."
 fi
 
-# ── 4. .env anlegen ───────────────────────────────────────
+success "Arbeitsverzeichnis: ${BOLD}$SCRIPT_DIR${RESET}"
+
+# ── 3. .env anlegen ───────────────────────────────────────
 if [ ! -f .env ]; then
   info "Erstelle .env…"
 
-  # Freien Port finden (Standard 8080, sonst nächsten)
+  # Freien Port finden (Standard 8080)
   PORT=8080
-  while lsof -i :"$PORT" &>/dev/null 2>&1; do
+  while ss -tlnp 2>/dev/null | grep -q ":${PORT} " || lsof -i :"$PORT" &>/dev/null 2>&1; do
     PORT=$((PORT + 1))
   done
 
@@ -102,14 +80,14 @@ else
   PORT=$(grep -oP '(?<=^PORT=)\d+' .env 2>/dev/null || echo "8080")
 fi
 
-# ── 5. Docker Images bauen + starten ──────────────────────
+# ── 4. Docker Images bauen + starten ──────────────────────
 info "Baue Docker Images (kann einige Minuten dauern)…"
 docker compose build --quiet
 
 info "Starte Nexboard…"
 docker compose up -d
 
-# ── 6. Warten bis healthy ─────────────────────────────────
+# ── 5. Warten bis healthy ─────────────────────────────────
 info "Warte auf Backend-Healthcheck…"
 TRIES=0
 MAX=30
@@ -121,14 +99,18 @@ until docker inspect --format='{{.State.Health.Status}}' nexboard-backend 2>/dev
 done
 echo ""
 
+# ── 6. IP ermitteln ───────────────────────────────────────
+HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+
 # ── 7. Fertig ─────────────────────────────────────────────
 echo ""
 echo -e "${GREEN}${BOLD}══════════════════════════════════════════${RESET}"
 echo -e "${GREEN}${BOLD}  Nexboard läuft! 🚀${RESET}"
 echo -e "${GREEN}${BOLD}══════════════════════════════════════════${RESET}"
 echo ""
-echo -e "  URL:        ${BOLD}http://localhost:${PORT}${RESET}"
-echo -e "  Daten:      ${BOLD}Docker Volume: nexboard-data${RESET}"
+echo -e "  Lokal:      ${BOLD}http://localhost:${PORT}${RESET}"
+[ -n "$HOST_IP" ] && echo -e "  Im Netzwerk: ${BOLD}http://${HOST_IP}:${PORT}${RESET}"
+echo ""
 echo -e "  Logs:       ${BOLD}docker compose logs -f${RESET}"
 echo -e "  Stoppen:    ${BOLD}docker compose down${RESET}"
 echo -e "  Update:     ${BOLD}bash update.sh${RESET}"
