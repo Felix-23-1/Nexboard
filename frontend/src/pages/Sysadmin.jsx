@@ -10,11 +10,10 @@ import {
   Power, RotateCcw, Monitor,
   Terminal, ExternalLink, Package, ChevronDown, TerminalSquare,
   GripVertical, Plug, History, Globe, Play, Square, RefreshCcw, Zap,
-  Server, Cpu, TrendingUp,
+  Cpu,
 } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { api } from "../api/client";
-import StatusBadge from "../components/StatusBadge";
 import ConnectorIcon from "../components/ConnectorIcon";
 import ConnectorMetrics from "../components/ConnectorMetrics";
 import SSHTerminalModal from "../components/SSHTerminalModal";
@@ -60,6 +59,35 @@ const TYPE_LABEL = {
   netcup:         "Netcup",
   wol:            "Wake-on-LAN",
   tls_monitor:    "TLS-Zertifikat",
+};
+
+const TYPE_COLOR = {
+  proxmox:        "#E57C00",
+  proxmox_backup: "#B45309",
+  hetzner:        "#D50C2D",
+  netcup:         "#C00E0E",
+  docker:         "#2496ED",
+  unifi:          "#0559C9",
+  pfsense:        "#E04C00",
+  cloudflare:     "#F48120",
+  tls_monitor:    "#0E9E6E",
+  wol:            "#7B5EA7",
+  uptime_kuma:    "#5CDD8B",
+  grafana:        "#F46800",
+  truenas:        "#0095D5",
+  synology:       "#94A3B8",
+  linux_ssh:      "#27B43E",
+  linux_probe:    "#10B981",
+  ai_models:      "#8B5CF6",
+  bookmarks:      "#F59E0B",
+};
+
+const STATUS_DOT = {
+  online:  { color: "#34d399", shadow: "0 0 6px #34d399aa" },
+  warning: { color: "#fbbf24", shadow: "0 0 6px #fbbf24aa" },
+  offline: { color: "#f87171", shadow: "0 0 6px #f87171aa" },
+  error:   { color: "#f87171", shadow: "0 0 6px #f87171aa" },
+  unknown: { color: "rgba(255,255,255,0.2)", shadow: "none" },
 };
 
 const SEVERITY = {
@@ -174,8 +202,9 @@ export default function Sysadmin() {
   /* ── Render ─────────────────────────────────────────────────────── */
   if (loading) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
-        <span style={{ fontSize: 13, color: "var(--text-3)" }}>Lade Das Lab…</span>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 14 }}>
+        <RefreshCw size={22} style={{ color: "rgba(245,158,11,0.5)", animation: "spin 1.2s linear infinite" }} />
+        <span style={{ fontSize: 13, color: "var(--text-3)" }}>Das Lab wird geladen…</span>
       </div>
     );
   }
@@ -183,10 +212,15 @@ export default function Sysadmin() {
   if (error) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
-        <div style={{ textAlign: "center" }}>
-          <p style={{ color: "#f87171", fontSize: 13, marginBottom: 8 }}>Daten konnten nicht geladen werden</p>
-          <p style={{ fontSize: 11, color: "var(--text-3)" }}>{error}</p>
-          <button onClick={() => load()} className="btn-primary" style={{ marginTop: 16, fontSize: 13 }}>
+        <div style={{
+          textAlign: "center", padding: "32px 40px",
+          background: "rgba(248,113,113,0.05)", border: "1px solid rgba(248,113,113,0.15)",
+          borderRadius: 20,
+        }}>
+          <AlertTriangle size={28} style={{ color: "#f87171", margin: "0 auto 12px" }} />
+          <p style={{ color: "#f87171", fontSize: 13, fontWeight: 500, marginBottom: 6 }}>Fehler beim Laden</p>
+          <p style={{ fontSize: 11, color: "var(--text-3)", maxWidth: 300 }}>{error}</p>
+          <button onClick={() => load()} className="btn-primary" style={{ marginTop: 20, fontSize: 13 }}>
             Erneut versuchen
           </button>
         </div>
@@ -200,63 +234,105 @@ export default function Sysadmin() {
     ? connectors.filter((c) => c.id === activeHost)
     : connectors;
 
+  // Summary stats
+  const total    = connectors.length;
+  const online   = connectors.filter((c) => c.status === "online").length;
+  const warnings = connectors.filter((c) => c.status === "warning").length;
+  const offline  = connectors.filter((c) => c.status === "offline" || c.status === "error").length;
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%", padding: 20, gap: 20 }}>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%", padding: 20, gap: 18 }}>
 
       {/* ── Topbar ────────────────────────────────────────────────── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
         <div>
-          <h1 className="page-title">Das Lab</h1>
-          <p className="page-sub">Vollständige Metriken, Container-Kontrolle & SSH-Zugang</p>
+          <h1 className="page-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            Das Lab
+          </h1>
+          <p className="page-sub">Vollständige Metriken · Container-Kontrolle · SSH-Zugang</p>
         </div>
         <button
           onClick={() => load(true)}
           className="btn-ghost"
           disabled={refreshing}
-          style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, padding: "6px 14px" }}
+          style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, padding: "7px 16px", flexShrink: 0, marginTop: 2 }}
         >
           <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />
           Aktualisieren
         </button>
       </div>
 
-      {/* ── Host-Switcher (nur wenn ≥1 Server-Connector) ─────────── */}
+      {/* ── Summary Stats ─────────────────────────────────────────── */}
+      {total > 0 && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {[
+            { label: "Connectors",  value: total,    color: "rgba(255,255,255,0.55)", bg: "rgba(255,255,255,0.05)" },
+            { label: "Online",      value: online,   color: "#34d399",               bg: "rgba(52,211,153,0.08)"  },
+            { label: "Warnungen",   value: warnings, color: "#fbbf24",               bg: "rgba(251,191,36,0.08)"  },
+            { label: "Offline",     value: offline,  color: "#f87171",               bg: "rgba(248,113,113,0.08)" },
+          ].map(({ label, value, color, bg }) => (
+            <div key={label} style={{
+              display: "flex", alignItems: "center", gap: 8,
+              background: bg, border: `1px solid ${color}25`,
+              borderRadius: 10, padding: "6px 14px",
+            }}>
+              <span style={{ fontSize: 16, fontWeight: 700, color, fontFamily: "'JetBrains Mono', monospace", lineHeight: 1 }}>
+                {value}
+              </span>
+              <span style={{ fontSize: 10.5, color: "rgba(255,255,255,0.4)", letterSpacing: "0.05em" }}>
+                {label}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Host-Switcher (nur wenn ≥2 Server-Connectoren) ────────── */}
       {hostConnectors.length > 1 && (
         <div style={{
-          display: "flex", gap: 6, flexWrap: "wrap",
-          background: "rgba(255,255,255,0.03)",
+          display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center",
+          background: "rgba(255,255,255,0.028)",
+          backdropFilter: "blur(12px)",
           border: "1px solid rgba(255,255,255,0.07)",
-          borderRadius: 12, padding: "8px 10px",
+          borderRadius: 14, padding: "8px 12px",
         }}>
+          <span style={{ fontSize: 10, letterSpacing: "0.08em", color: "rgba(255,255,255,0.25)", textTransform: "uppercase", fontWeight: 600, marginRight: 4 }}>
+            Host
+          </span>
           <button
             onClick={() => setActiveHost(null)}
             style={{
-              fontSize: 12, padding: "4px 12px", borderRadius: 8,
-              border: "none", cursor: "pointer", transition: "all 0.15s",
-              background: activeHost === null ? "rgba(245,158,11,0.15)" : "transparent",
-              color: activeHost === null ? "#F59E0B" : "rgba(255,255,255,0.45)",
+              fontSize: 12, padding: "5px 14px", borderRadius: 9,
+              border: activeHost === null ? "1px solid rgba(245,158,11,0.4)" : "1px solid transparent",
+              cursor: "pointer", transition: "all 0.18s",
+              background: activeHost === null ? "rgba(245,158,11,0.14)" : "transparent",
+              color: activeHost === null ? "#F59E0B" : "rgba(255,255,255,0.4)",
               fontWeight: activeHost === null ? 600 : 400,
+              boxShadow: activeHost === null ? "0 0 12px rgba(245,158,11,0.15)" : "none",
             }}
           >
             Alle
           </button>
           {hostConnectors.map((c) => {
             const isActive = activeHost === c.id;
-            const dotColor = c.status === "online" ? "#34d399" : c.status === "warning" ? "#fbbf24" : "#f87171";
+            const dot = STATUS_DOT[c.status] ?? STATUS_DOT.unknown;
+            const tc  = TYPE_COLOR[c.type] ?? "#F59E0B";
             return (
               <button
                 key={c.id}
                 onClick={() => setActiveHost(isActive ? null : c.id)}
                 style={{
-                  fontSize: 12, padding: "4px 12px", borderRadius: 8,
-                  border: "none", cursor: "pointer", transition: "all 0.15s",
-                  background: isActive ? "rgba(245,158,11,0.15)" : "transparent",
-                  color: isActive ? "#F59E0B" : "rgba(255,255,255,0.55)",
+                  fontSize: 12, padding: "5px 14px", borderRadius: 9,
+                  border: isActive ? `1px solid ${tc}55` : "1px solid transparent",
+                  cursor: "pointer", transition: "all 0.18s",
+                  background: isActive ? `${tc}18` : "transparent",
+                  color: isActive ? tc : "rgba(255,255,255,0.5)",
                   fontWeight: isActive ? 600 : 400,
-                  display: "flex", alignItems: "center", gap: 6,
+                  display: "flex", alignItems: "center", gap: 7,
+                  boxShadow: isActive ? `0 0 14px ${tc}20` : "none",
                 }}
               >
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: dotColor, flexShrink: 0 }} />
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: dot.color, boxShadow: isActive ? dot.shadow : "none", flexShrink: 0, transition: "box-shadow 0.2s" }} />
                 {c.metrics?.hostname || c.name}
               </button>
             );
@@ -266,11 +342,27 @@ export default function Sysadmin() {
 
       {/* ── Widget-Liste ──────────────────────────────────────────── */}
       {visibleConnectors.length === 0 ? (
-        <div className="card" style={{ textAlign: "center", padding: "48px 20px" }}>
-          <Plug size={36} style={{ color: "rgba(255,255,255,0.12)", margin: "0 auto 12px" }} />
-          <p style={{ color: "var(--text-2)", fontSize: 13, marginBottom: 16 }}>
-            Noch keine Connectors konfiguriert.
-          </p>
+        <div style={{
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          padding: "64px 20px", gap: 16,
+          background: "rgba(255,255,255,0.025)", backdropFilter: "blur(12px)",
+          border: "1px solid rgba(255,255,255,0.07)", borderRadius: 20,
+        }}>
+          <div style={{
+            width: 64, height: 64, borderRadius: 20,
+            background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <Plug size={28} style={{ color: "rgba(255,255,255,0.15)" }} />
+          </div>
+          <div style={{ textAlign: "center" }}>
+            <p style={{ color: "var(--text-2)", fontSize: 14, fontWeight: 500, marginBottom: 4 }}>
+              Noch keine Connectors konfiguriert
+            </p>
+            <p style={{ color: "var(--text-3)", fontSize: 12 }}>
+              Verbinde deine Dienste und Server mit Nexboard.
+            </p>
+          </div>
           <Link to="/connectors" className="btn-primary" style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13 }}>
             <Plug size={13} /> Connector hinzufügen
           </Link>
@@ -279,15 +371,15 @@ export default function Sysadmin() {
         <>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span className="section-label" style={{ marginBottom: 0 }}>
-              Connectors
+              {activeHost ? "Host-Detail" : "Alle Connectors"}
             </span>
-            <span style={{ fontSize: 10.5, color: "var(--text-3)" }}>
-              Widgets per Drag &amp; Drop verschieben
+            <span style={{ fontSize: 10, color: "var(--text-3)", letterSpacing: "0.04em" }}>
+              Drag &amp; Drop zum Sortieren
             </span>
           </div>
 
           <div
-            style={{ display: "flex", flexDirection: "column", gap: 14 }}
+            style={{ display: "flex", flexDirection: "column", gap: 12 }}
             onDragEnd={handleDrop}
           >
             {visibleConnectors.map((c) => (
@@ -321,62 +413,85 @@ function ConnectorCard({
   dragging, onRunAi, onDragStart, onDragOver, onDrop,
 }) {
   const [sshTermOpen, setSshTermOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const tc   = TYPE_COLOR[c.type] ?? "#F59E0B";
+  const dot  = STATUS_DOT[c.status] ?? STATUS_DOT.unknown;
+
   return (
     <div
       draggable
       onDragStart={onDragStart}
       onDragOver={(e) => { e.preventDefault(); onDragOver(); }}
       onDrop={onDrop}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        background: "rgba(255,255,255,0.055)",
-        backdropFilter: "blur(16px)",
-        WebkitBackdropFilter: "blur(16px)",
-        border: `1px solid ${dragging ? "rgba(245,158,11,0.35)" : "rgba(255,255,255,0.09)"}`,
+        background: "rgba(255,255,255,0.042)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        border: `1px solid ${dragging ? `${tc}55` : hovered ? `${tc}28` : "rgba(255,255,255,0.08)"}`,
+        borderLeft: `3px solid ${tc}`,
         borderRadius: 16,
-        padding: "16px",
+        padding: "16px 18px",
         display: "flex",
         flexDirection: "column",
         gap: 14,
-        opacity: dragging ? 0.5 : 1,
-        transition: "border-color 0.2s, opacity 0.15s, box-shadow 0.2s",
-        boxShadow: dragging ? "0 0 0 2px rgba(245,158,11,0.18)" : "none",
+        opacity: dragging ? 0.48 : 1,
+        transition: "border-color 0.2s, opacity 0.15s, box-shadow 0.25s",
+        boxShadow: dragging
+          ? `0 0 0 2px ${tc}30, 0 8px 32px rgba(0,0,0,0.3)`
+          : hovered
+          ? `0 4px 28px rgba(0,0,0,0.25), 0 0 0 1px ${tc}18`
+          : "0 2px 12px rgba(0,0,0,0.15)",
         cursor: "default",
       }}
-      onMouseEnter={(e) => { if (!dragging) e.currentTarget.style.borderColor = "rgba(245,158,11,0.18)"; }}
-      onMouseLeave={(e) => { if (!dragging) e.currentTarget.style.borderColor = "rgba(255,255,255,0.09)"; }}
     >
       {/* ── Header ────────────────────────────────────────────────── */}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         {/* Drag-Handle */}
         <div
-          style={{ cursor: "grab", color: "rgba(255,255,255,0.2)", flexShrink: 0 }}
+          style={{
+            cursor: "grab", flexShrink: 0,
+            color: hovered ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.15)",
+            transition: "color 0.2s",
+          }}
           title="Ziehen zum Verschieben"
-          onMouseDown={(e) => e.stopPropagation()}
         >
           <GripVertical size={14} />
         </div>
 
-        {/* Icon */}
+        {/* Icon box — type-colored */}
         <div style={{
-          width: 36, height: 36, borderRadius: 10,
-          background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.09)",
+          width: 40, height: 40, borderRadius: 12,
+          background: `${tc}18`,
+          border: `1px solid ${tc}35`,
           display: "flex", alignItems: "center", justifyContent: "center",
-          flexShrink: 0, color: "rgba(255,255,255,0.5)",
+          flexShrink: 0, color: tc,
+          transition: "background 0.2s, border-color 0.2s",
+          boxShadow: hovered ? `0 0 12px ${tc}25` : "none",
         }}>
-          <ConnectorIcon icon={TYPE_ICON[c.type] ?? "settings"} size={17} />
+          <ConnectorIcon icon={TYPE_ICON[c.type] ?? "settings"} size={18} />
         </div>
 
-        {/* Name + Typ */}
+        {/* Name + Typ + Status dot */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
-            fontSize: 13, fontWeight: 600, color: "var(--text-1)",
+            fontSize: 13.5, fontWeight: 600, color: "var(--text-1)",
             display: "flex", alignItems: "center", gap: 8,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>
-            {c.name}
+            {/* Glowing status dot */}
+            <span style={{
+              width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+              background: dot.color,
+              boxShadow: dot.shadow,
+              display: "inline-block",
+              transition: "box-shadow 0.3s",
+            }} />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span>
             {!c.enabled && (
               <span style={{
-                fontSize: 9.5, color: "var(--text-3)",
+                fontSize: 9.5, color: "var(--text-3)", flexShrink: 0,
                 border: "1px solid rgba(255,255,255,0.10)", borderRadius: 5,
                 padding: "1px 6px",
               }}>
@@ -384,39 +499,45 @@ function ConnectorCard({
               </span>
             )}
           </div>
-          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 1 }}>
-            {TYPE_LABEL[c.type] ?? c.type}
+          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2, display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ color: tc, opacity: 0.7, fontWeight: 500 }}>{TYPE_LABEL[c.type] ?? c.type}</span>
+            {c.metrics?.hostname && (
+              <>
+                <span style={{ opacity: 0.3 }}>·</span>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, opacity: 0.55 }}>
+                  {c.metrics.hostname}
+                </span>
+              </>
+            )}
           </div>
         </div>
 
-        <StatusBadge status={c.status} />
-
-        {/* Service-Shortcut: Web-UI öffnen */}
-        {getServiceUrl(c) && (
-          <a
-            href={getServiceUrl(c)}
-            target="_blank"
-            rel="noopener noreferrer"
+        {/* Action buttons */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          {getServiceUrl(c) && (
+            <a
+              href={getServiceUrl(c)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-ghost"
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, padding: "5px 11px", textDecoration: "none" }}
+              title={`${c.name} öffnen`}
+            >
+              <Globe size={12} />
+              Öffnen
+            </a>
+          )}
+          <button
+            onClick={onRunAi}
+            disabled={aiLoad}
             className="btn-ghost"
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, padding: "5px 11px", textDecoration: "none" }}
-            title={`${c.name} Web-UI öffnen`}
+            style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, padding: "5px 11px" }}
+            title="KI-Analyse starten"
           >
-            <Globe size={12} />
-            Öffnen
-          </a>
-        )}
-
-        {/* KI-Analyse */}
-        <button
-          onClick={onRunAi}
-          disabled={aiLoad}
-          className="btn-ghost"
-          style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, padding: "5px 11px" }}
-          title="KI-Analyse starten"
-        >
-          <Sparkles size={12} className={aiLoad ? "animate-pulse" : ""} />
-          KI-Analyse
-        </button>
+            <Sparkles size={12} className={aiLoad ? "animate-pulse" : ""} />
+            KI
+          </button>
+        </div>
       </div>
 
       {/* ── Fehler ────────────────────────────────────────────────── */}
@@ -424,7 +545,7 @@ function ConnectorCard({
         <div style={{
           display: "flex", alignItems: "flex-start", gap: 8,
           fontSize: 11.5, color: "#f87171",
-          background: "rgba(248,113,113,0.06)", border: "1px solid rgba(248,113,113,0.12)",
+          background: "rgba(248,113,113,0.06)", border: "1px solid rgba(248,113,113,0.15)",
           borderRadius: 10, padding: "8px 12px",
         }}>
           <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
@@ -442,11 +563,11 @@ function ConnectorCard({
 
       {/* ── SSH-Terminal + Script-Runner (linux_ssh + linux_probe) ── */}
       {(c.type === "linux_ssh" || c.type === "linux_probe") && (
-        <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button
             onClick={() => setSshTermOpen(true)}
             className="vm-btn vm-btn-teal"
-            style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, padding: "4px 10px", borderRadius: 6, cursor: "pointer" }}
+            style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, padding: "5px 12px", borderRadius: 7, cursor: "pointer" }}
           >
             <TerminalSquare size={12} /> SSH Terminal
           </button>
@@ -505,21 +626,24 @@ function VmControlBlock({ connector, allConnectors }) {
           onClick={() => setOpen((o) => !o)}
           style={{
             width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "6px 8px", borderRadius: 8, background: "transparent",
+            padding: "7px 10px", borderRadius: 9, background: open ? "rgba(255,255,255,0.04)" : "transparent",
             border: "none", cursor: "pointer", transition: "background 0.15s",
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.045)")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = open ? "rgba(255,255,255,0.04)" : "transparent")}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 7,
-            fontSize: 10.5, fontWeight: 600, letterSpacing: "0.09em", textTransform: "uppercase",
-            color: "rgba(255,255,255,0.38)",
+          <div style={{ display: "flex", alignItems: "center", gap: 8,
+            fontSize: 10.5, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase",
+            color: "rgba(255,255,255,0.42)",
           }}>
             <Monitor size={11} />
             VMs
             <span style={{
               textTransform: "none", letterSpacing: 0, fontSize: 10,
-              fontFamily: "'JetBrains Mono', monospace", color: "rgba(245,158,11,0.65)",
+              fontFamily: "'JetBrains Mono', monospace",
+              color: runningCount > 0 ? "rgba(52,211,153,0.75)" : "rgba(255,255,255,0.3)",
+              background: runningCount > 0 ? "rgba(52,211,153,0.08)" : "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(52,211,153,0.2)", borderRadius: 5, padding: "1px 6px",
             }}>
               {runningCount}/{allVms.length} running
             </span>
@@ -529,7 +653,7 @@ function VmControlBlock({ connector, allConnectors }) {
             style={{
               color: "rgba(255,255,255,0.28)",
               transform: open ? "rotate(180deg)" : "rotate(0deg)",
-              transition: "transform 0.2s",
+              transition: "transform 0.22s",
             }}
           />
         </button>
@@ -876,21 +1000,39 @@ function MetricChart({ connectorId, metricKey, label, color = "#F59E0B", unit = 
   }));
 
   return (
-    <div>
-      <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.35)", marginBottom: 4, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-        {label} (24h)
+    <div style={{
+      background: "rgba(0,0,0,0.18)", border: "1px solid rgba(255,255,255,0.06)",
+      borderRadius: 12, padding: "10px 12px",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+        <span style={{ fontSize: 10.5, color: color, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          {label}
+        </span>
+        {chartData?.values?.length > 0 && (
+          <span style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color, opacity: 0.85 }}>
+            {chartData.values[chartData.values.length - 1]?.toFixed(1)}{unit}
+          </span>
+        )}
       </div>
-      <ResponsiveContainer width="100%" height={80}>
-        <LineChart data={points} margin={{ top: 2, right: 4, left: -28, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-          <XAxis dataKey="t" tick={{ fontSize: 9, fill: "rgba(255,255,255,0.3)" }} interval="preserveStartEnd" />
-          <YAxis tick={{ fontSize: 9, fill: "rgba(255,255,255,0.3)" }} domain={[0, 100]} unit={unit} />
+      <ResponsiveContainer width="100%" height={72}>
+        <LineChart data={points} margin={{ top: 2, right: 4, left: -30, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+          <XAxis dataKey="t" tick={{ fontSize: 8.5, fill: "rgba(255,255,255,0.25)" }} interval="preserveStartEnd" axisLine={false} tickLine={false} />
+          <YAxis tick={{ fontSize: 8.5, fill: "rgba(255,255,255,0.25)" }} domain={[0, 100]} unit={unit} axisLine={false} tickLine={false} />
           <Tooltip
-            contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, fontSize: 11 }}
-            itemStyle={{ color: color }}
-            formatter={(v) => [`${v}${unit}`, label]}
+            contentStyle={{
+              background: "rgba(10,10,20,0.92)", backdropFilter: "blur(12px)",
+              border: `1px solid ${color}40`, borderRadius: 10, fontSize: 11, padding: "6px 10px",
+            }}
+            itemStyle={{ color }}
+            labelStyle={{ color: "rgba(255,255,255,0.45)", fontSize: 10 }}
+            formatter={(v) => [`${v?.toFixed(1)}${unit}`, label]}
           />
-          <Line type="monotone" dataKey="v" stroke={color} dot={false} strokeWidth={1.5} />
+          <Line
+            type="monotone" dataKey="v" stroke={color}
+            dot={false} strokeWidth={1.8}
+            strokeLinecap="round"
+          />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -930,26 +1072,27 @@ function HistoryBlock({ connectorId, connectorType }) {
         onClick={toggle}
         style={{
           width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "6px 8px", borderRadius: 8, background: "transparent",
+          padding: "7px 10px", borderRadius: 9, background: open ? "rgba(255,255,255,0.04)" : "transparent",
           border: "none", cursor: "pointer", transition: "background 0.15s",
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
-        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.045)")}
+        onMouseLeave={(e) => (e.currentTarget.style.background = open ? "rgba(255,255,255,0.04)" : "transparent")}
       >
         <div style={{
-          display: "flex", alignItems: "center", gap: 7,
-          fontSize: 10.5, fontWeight: 600, letterSpacing: "0.09em", textTransform: "uppercase",
+          display: "flex", alignItems: "center", gap: 8,
+          fontSize: 10.5, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase",
           color: "rgba(255,255,255,0.38)",
         }}>
           <History size={11} />
-          Verlauf (24h)
+          Verlauf &amp; Metriken
+          <span style={{ fontSize: 9.5, letterSpacing: 0, textTransform: "none", color: "rgba(255,255,255,0.22)", fontWeight: 400 }}>24h</span>
         </div>
         <ChevronDown
           size={13}
           style={{
             color: "rgba(255,255,255,0.28)",
             transform: open ? "rotate(180deg)" : "rotate(0deg)",
-            transition: "transform 0.2s",
+            transition: "transform 0.22s",
           }}
         />
       </button>
