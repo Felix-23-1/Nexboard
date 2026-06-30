@@ -58,6 +58,8 @@ export const api = {
     overview: () => request("/status/overview"),
     detailed: () => request("/status/detailed"),
     history: (connectorId, hours = 24) => request(`/status/history/${connectorId}?hours=${hours}`),
+    metricHistory: (connectorId, key, hours = 24, points = 120) =>
+      request(`/status/history/${connectorId}/metrics?key=${encodeURIComponent(key)}&hours=${hours}&points=${points}`),
   },
   connectors: {
     types: () => request("/connectors/types"),

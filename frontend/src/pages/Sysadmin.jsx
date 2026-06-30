@@ -3,14 +3,16 @@
  * Connector-Karten sind per Drag & Drop verschiebbar.
  * Help Desk wurde in FloatingChat (global) ausgelagert.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import {
   RefreshCw, Sparkles, AlertTriangle,
   Power, RotateCcw, Monitor,
   Terminal, ExternalLink, Package, ChevronDown, TerminalSquare,
   GripVertical, Plug, History, Globe, Play, Square, RefreshCcw, Zap,
+  Server, Cpu, TrendingUp,
 } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { api } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import ConnectorIcon from "../components/ConnectorIcon";
@@ -31,6 +33,9 @@ const TYPE_ICON = {
   cloudflare:     "shield",
   grafana:        "bar-chart-2",
   linux_ssh:      "terminal",
+  linux_probe:    "cpu",
+  ai_models:      "brain",
+  bookmarks:      "bookmark",
   netcup:         "server",
   wol:            "zap",
   tls_monitor:    "lock",
@@ -48,7 +53,10 @@ const TYPE_LABEL = {
   proxmox_backup: "Proxmox Backup",
   cloudflare:     "Cloudflare",
   grafana:        "Grafana",
-  linux_ssh:      "Linux Server",
+  linux_ssh:      "Linux Server (SSH)",
+  linux_probe:    "Linux Full-Probe",
+  ai_models:      "AI Model Server",
+  bookmarks:      "Bookmark-Gruppe",
   netcup:         "Netcup",
   wol:            "Wake-on-LAN",
   tls_monitor:    "TLS-Zertifikat",
@@ -68,7 +76,8 @@ const VM_STATUS_COLOR = {
 
 /* ── Service-URL ableiten ─────────────────────────────────────────── */
 
-const NO_WEB_TYPES = new Set(["linux_ssh"]);
+const NO_WEB_TYPES = new Set(["linux_ssh", "linux_probe", "wol", "bookmarks"]);
+const HOST_TYPES   = new Set(["linux_probe", "linux_ssh"]);
 
 function getServiceUrl(c) {
   if (NO_WEB_TYPES.has(c.type)) return null;
@@ -93,6 +102,7 @@ export default function Sysadmin() {
   const [aiResults, setAiResults] = useState({});
   const [aiLoading, setAiLoading] = useState({});
   const [widgetOrder, setWidgetOrder] = useState(null);
+  const [activeHost, setActiveHost]   = useState(null); // null = Alle
   const dragId = useRef(null);
 
   async function load(showRefresh = false) {
@@ -185,6 +195,10 @@ export default function Sysadmin() {
   }
 
   const connectors = sortedConnectors();
+  const hostConnectors = connectors.filter((c) => HOST_TYPES.has(c.type));
+  const visibleConnectors = activeHost
+    ? connectors.filter((c) => c.id === activeHost)
+    : connectors;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100%", padding: 20, gap: 20 }}>
@@ -206,8 +220,52 @@ export default function Sysadmin() {
         </button>
       </div>
 
+      {/* ── Host-Switcher (nur wenn ≥1 Server-Connector) ─────────── */}
+      {hostConnectors.length > 1 && (
+        <div style={{
+          display: "flex", gap: 6, flexWrap: "wrap",
+          background: "rgba(255,255,255,0.03)",
+          border: "1px solid rgba(255,255,255,0.07)",
+          borderRadius: 12, padding: "8px 10px",
+        }}>
+          <button
+            onClick={() => setActiveHost(null)}
+            style={{
+              fontSize: 12, padding: "4px 12px", borderRadius: 8,
+              border: "none", cursor: "pointer", transition: "all 0.15s",
+              background: activeHost === null ? "rgba(245,158,11,0.15)" : "transparent",
+              color: activeHost === null ? "#F59E0B" : "rgba(255,255,255,0.45)",
+              fontWeight: activeHost === null ? 600 : 400,
+            }}
+          >
+            Alle
+          </button>
+          {hostConnectors.map((c) => {
+            const isActive = activeHost === c.id;
+            const dotColor = c.status === "online" ? "#34d399" : c.status === "warning" ? "#fbbf24" : "#f87171";
+            return (
+              <button
+                key={c.id}
+                onClick={() => setActiveHost(isActive ? null : c.id)}
+                style={{
+                  fontSize: 12, padding: "4px 12px", borderRadius: 8,
+                  border: "none", cursor: "pointer", transition: "all 0.15s",
+                  background: isActive ? "rgba(245,158,11,0.15)" : "transparent",
+                  color: isActive ? "#F59E0B" : "rgba(255,255,255,0.55)",
+                  fontWeight: isActive ? 600 : 400,
+                  display: "flex", alignItems: "center", gap: 6,
+                }}
+              >
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: dotColor, flexShrink: 0 }} />
+                {c.metrics?.hostname || c.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* ── Widget-Liste ──────────────────────────────────────────── */}
-      {connectors.length === 0 ? (
+      {visibleConnectors.length === 0 ? (
         <div className="card" style={{ textAlign: "center", padding: "48px 20px" }}>
           <Plug size={36} style={{ color: "rgba(255,255,255,0.12)", margin: "0 auto 12px" }} />
           <p style={{ color: "var(--text-2)", fontSize: 13, marginBottom: 16 }}>
@@ -232,7 +290,7 @@ export default function Sysadmin() {
             style={{ display: "flex", flexDirection: "column", gap: 14 }}
             onDragEnd={handleDrop}
           >
-            {connectors.map((c) => (
+            {visibleConnectors.map((c) => (
               <ConnectorCard
                 key={c.id}
                 connector={c}
@@ -382,8 +440,8 @@ function ConnectorCard({
         <VmControlBlock connector={c} allConnectors={allConnectors} />
       )}
 
-      {/* ── SSH-Terminal + Script-Runner (nur linux_ssh) ─────────── */}
-      {c.type === "linux_ssh" && (
+      {/* ── SSH-Terminal + Script-Runner (linux_ssh + linux_probe) ── */}
+      {(c.type === "linux_ssh" || c.type === "linux_probe") && (
         <div>
           <button
             onClick={() => setSshTermOpen(true)}
@@ -397,7 +455,7 @@ function ConnectorCard({
           )}
         </div>
       )}
-      {c.type === "linux_ssh" && <ScriptRunner connectorId={c.id} />}
+      {(c.type === "linux_ssh" || c.type === "linux_probe") && <ScriptRunner connectorId={c.id} />}
 
       {/* ── Wake-on-LAN Button ────────────────────────────────── */}
       {c.type === "wol" && <WolButton connectorId={c.id} isOnline={c.status === "online"} />}
@@ -411,7 +469,7 @@ function ConnectorCard({
       {aiResult && <AiBlock result={aiResult} />}
 
       {/* ── History & Trends ──────────────────────────────────────── */}
-      <HistoryBlock connectorId={c.id} />
+      <HistoryBlock connectorId={c.id} connectorType={c.type} />
     </div>
   );
 }
@@ -784,11 +842,68 @@ function StatusTimeline({ snapshots }) {
   );
 }
 
-function HistoryBlock({ connectorId }) {
+/* ── Metric Line Chart (Recharts) ────────────────────────────────── */
+
+function MetricChart({ connectorId, metricKey, label, color = "#F59E0B", unit = "%" }) {
+  const [chartData, setChartData] = useState(null);
+  const [loading, setLoading]     = useState(false);
+  const [err, setErr]             = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetch() {
+      setLoading(true); setErr(null);
+      try {
+        const d = await api.status.metricHistory(connectorId, metricKey, 24, 80);
+        if (!cancelled) setChartData(d);
+      } catch (e) {
+        if (!cancelled) setErr(e.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    fetch();
+    return () => { cancelled = true; };
+  }, [connectorId, metricKey]);
+
+  if (loading) return <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Lade {label}…</div>;
+  if (err)     return <div style={{ fontSize: 11, color: "#f87171" }}>{err}</div>;
+  if (!chartData?.values?.length) return null;
+
+  const points = chartData.labels.map((ts, i) => ({
+    t: new Date(ts).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }),
+    v: chartData.values[i],
+  }));
+
+  return (
+    <div>
+      <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.35)", marginBottom: 4, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+        {label} (24h)
+      </div>
+      <ResponsiveContainer width="100%" height={80}>
+        <LineChart data={points} margin={{ top: 2, right: 4, left: -28, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+          <XAxis dataKey="t" tick={{ fontSize: 9, fill: "rgba(255,255,255,0.3)" }} interval="preserveStartEnd" />
+          <YAxis tick={{ fontSize: 9, fill: "rgba(255,255,255,0.3)" }} domain={[0, 100]} unit={unit} />
+          <Tooltip
+            contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, fontSize: 11 }}
+            itemStyle={{ color: color }}
+            formatter={(v) => [`${v}${unit}`, label]}
+          />
+          <Line type="monotone" dataKey="v" stroke={color} dot={false} strokeWidth={1.5} />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function HistoryBlock({ connectorId, connectorType }) {
   const [open, setOpen]       = useState(false);
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr]         = useState(null);
+
+  const showCharts = connectorType === "linux_probe" || connectorType === "linux_ssh";
 
   async function load() {
     setLoading(true); setErr(null);
@@ -841,7 +956,7 @@ function HistoryBlock({ connectorId }) {
 
       {/* Inhalt */}
       {open && (
-        <div style={{ padding: "8px 8px 4px" }}>
+        <div style={{ padding: "8px 8px 4px", display: "flex", flexDirection: "column", gap: 12 }}>
           {loading ? (
             <span style={{ fontSize: 11, color: "var(--text-3)" }}>Lade Verlauf…</span>
           ) : err ? (
@@ -852,6 +967,15 @@ function HistoryBlock({ connectorId }) {
             </span>
           ) : (
             <StatusTimeline snapshots={data.snapshots} />
+          )}
+
+          {/* Metric Charts für Server-Connectors */}
+          {showCharts && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
+              <MetricChart connectorId={connectorId} metricKey="cpu_pct" label="CPU" color="#F59E0B" unit="%" />
+              <MetricChart connectorId={connectorId} metricKey="mem_pct" label="RAM" color="#60a5fa" unit="%" />
+              <MetricChart connectorId={connectorId} metricKey="disk_pct" label="Disk" color="#34d399" unit="%" />
+            </div>
           )}
         </div>
       )}

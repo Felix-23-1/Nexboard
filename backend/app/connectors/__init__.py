@@ -14,6 +14,9 @@ from .linux_ssh.connector import LinuxSSHConnector
 from .netcup.connector import NetcupConnector
 from .wol.connector import WolConnector
 from .tls_monitor.connector import TlsMonitorConnector
+from .linux_probe.connector import LinuxProbeConnector
+from .ai_models.connector import AIModelsConnector
+from .bookmarks.connector import BookmarkGroupConnector
 
 registry.register("proxmox",        ProxmoxConnector)
 registry.register("docker",         DockerConnector)
@@ -30,5 +33,8 @@ registry.register("linux_ssh",      LinuxSSHConnector)
 registry.register("netcup",         NetcupConnector)
 registry.register("wol",            WolConnector)
 registry.register("tls_monitor",    TlsMonitorConnector)
+registry.register("linux_probe",    LinuxProbeConnector)
+registry.register("ai_models",      AIModelsConnector)
+registry.register("bookmarks",      BookmarkGroupConnector)
 
 __all__ = ["registry"]

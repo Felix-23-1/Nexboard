@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Server, Activity, HardDrive, Network, Wifi, Terminal, Cloud, Archive, Shield, BarChart2, ChevronDown, ChevronUp, Database, Play, Square, RefreshCcw, Loader } from "lucide-react";
+import { Server, Activity, HardDrive, Network, Wifi, Terminal, Cloud, Archive, Shield, BarChart2, ChevronDown, ChevronUp, Database, Play, Square, RefreshCcw, Loader, Cpu, Thermometer, Lock, Globe, Layers, Bookmark, AlertTriangle, CheckCircle, XCircle, Zap } from "lucide-react";
 import MetricBar from "./MetricBar";
 import { formatBytes, formatUptime, num, pct, toPercent } from "../utils/format";
 import { api } from "../api/client";
@@ -804,6 +804,407 @@ function TlsMetrics({ m }) {
   );
 }
 
+// --- Linux Full-Probe ---------------------------------------------------------
+
+function ProbeTab({ label, active, onClick, icon: Icon }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        fontSize: 11, fontWeight: 600, padding: "4px 10px", borderRadius: 6,
+        border: "none", cursor: "pointer", transition: "all 0.15s",
+        background: active ? "rgba(245,158,11,0.15)" : "transparent",
+        color: active ? "#F59E0B" : "rgba(255,255,255,0.38)",
+        display: "flex", alignItems: "center", gap: 4,
+      }}
+    >
+      {Icon && <Icon size={11} />}
+      {label}
+    </button>
+  );
+}
+
+function VramBar({ used, total, label }) {
+  if (!total) return null;
+  const pct = Math.round((used / total) * 100);
+  const color = pct > 85 ? "#f87171" : pct > 60 ? "#fbbf24" : "#34d399";
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.45)" }}>{label || "VRAM"}</span>
+        <span style={{ fontSize: 11, fontFamily: "monospace", color }}>
+          {Math.round(used / 1024 * 10) / 10} / {Math.round(total / 1024 * 10) / 10} GB ({pct}%)
+        </span>
+      </div>
+      <div style={{ height: 6, background: "rgba(255,255,255,0.08)", borderRadius: 3, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 3, transition: "width 0.4s" }} />
+      </div>
+    </div>
+  );
+}
+
+function SecCheck({ ok, label, detail }) {
+  const icon = ok === true
+    ? <CheckCircle size={13} style={{ color: "#34d399", flexShrink: 0 }} />
+    : ok === false
+    ? <XCircle size={13} style={{ color: "#f87171", flexShrink: 0 }} />
+    : <AlertTriangle size={13} style={{ color: "#fbbf24", flexShrink: 0 }} />;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+      {icon}
+      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", flex: 1 }}>{label}</span>
+      {detail && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", fontFamily: "monospace" }}>{detail}</span>}
+    </div>
+  );
+}
+
+function LinuxProbeMetrics({ m }) {
+  const TABS = ["System", "GPU", "Systemd", "Netzwerk", "Security"];
+  const TAB_ICONS = { System: Cpu, GPU: Zap, Systemd: Layers, Netzwerk: Network, Security: Shield };
+  const [tab, setTab] = useState("System");
+
+  const gpu  = m.gpu      ?? {};
+  const sysd = m.systemd  ?? {};
+  const net  = m.network  ?? {};
+  const sec  = m.security ?? {};
+
+  const cpuPct  = m.cpu_pct  ?? 0;
+  const memPct  = m.mem_pct  ?? 0;
+  const diskPct = m.disk_pct ?? 0;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* Host-Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <Terminal size={13} style={{ color: "rgba(255,255,255,0.4)", flexShrink: 0 }} />
+        <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>{m.hostname || "–"}</span>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{m.os || ""}</span>
+        {m.is_vm && (
+          <span style={{ fontSize: 9.5, color: "#60a5fa", border: "1px solid rgba(96,165,250,0.3)", borderRadius: 4, padding: "1px 6px" }}>
+            VM · {m.vm_type}
+          </span>
+        )}
+        <span style={{ marginLeft: "auto", fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
+          ↑ {m.uptime_h != null ? `${m.uptime_h}h` : "–"}
+          {m.temp_c != null && <span style={{ marginLeft: 8, color: m.temp_c > 80 ? "#f87171" : "#fbbf24" }}>🌡 {m.temp_c}°C</span>}
+        </span>
+      </div>
+
+      {/* Quick bars (always visible) */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <MetricBar label="CPU" percent={cpuPct} detail={`${cpuPct} %`} />
+        <MetricBar label="RAM" percent={memPct} detail={`${formatBytes(m.mem_used)} / ${formatBytes(m.mem_total)}`} />
+        <MetricBar label="Disk /" percent={diskPct} detail={`${formatBytes(m.disk_used)} / ${formatBytes(m.disk_total)}`} />
+      </div>
+
+      {/* Tab bar */}
+      <div style={{ display: "flex", gap: 2, borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: 6 }}>
+        {TABS.map((t) => (
+          <ProbeTab key={t} label={t} active={tab === t} onClick={() => setTab(t)} icon={TAB_ICONS[t]} />
+        ))}
+      </div>
+
+      {/* ── System ── */}
+      {tab === "System" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {m.load1 != null && (
+            <StatTiles tiles={[
+              { label: "Load 1m",  value: m.load1?.toFixed(2)  ?? "–" },
+              { label: "Load 5m",  value: m.load5?.toFixed(2)  ?? "–" },
+              { label: "Load 15m", value: m.load15?.toFixed(2) ?? "–" },
+              { label: "CPU-Kerne", value: m.cpu_cores ?? "–" },
+            ]} />
+          )}
+          <InfoLine items={[
+            ["Kernel", m.kernel],
+            ["Arch",   m.arch],
+          ]} />
+          {/* All disks */}
+          {(m.disks ?? []).length > 1 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {m.disks.map((d) => (
+                <MetricBar key={d.mount} label={d.mount} percent={d.pct}
+                  detail={`${formatBytes(d.used)} / ${formatBytes(d.total)}`} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── GPU ── */}
+      {tab === "GPU" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {!gpu.available ? (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", padding: "8px 0" }}>
+              {gpu.reason || "Kein GPU erkannt"}
+            </div>
+          ) : (
+            <>
+              <StatTiles tiles={[
+                { label: "GPUs", value: gpu.gpu_count ?? 0 },
+                { label: "VRAM gesamt", value: `${Math.round((gpu.total_vram_mb ?? 0) / 1024)} GB` },
+                { label: "VRAM belegt", value: `${Math.round((gpu.total_vram_used_mb ?? 0) / 1024)} GB`, color: "text-amber-300" },
+              ]} />
+              {(gpu.gpus ?? []).map((g, i) => (
+                <div key={i} style={{ background: "rgba(0,0,0,0.22)", borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: "rgba(255,255,255,0.8)" }}>
+                      GPU {g.index} · {g.name}
+                    </span>
+                    <div style={{ display: "flex", gap: 10, fontSize: 11, fontFamily: "monospace" }}>
+                      {g.temp_c != null && <span style={{ color: g.temp_c > 80 ? "#f87171" : "#fbbf24" }}>{g.temp_c}°C</span>}
+                      {g.power_w != null && <span style={{ color: "rgba(255,255,255,0.5)" }}>{Math.round(g.power_w)}W</span>}
+                    </div>
+                  </div>
+                  {g.vram_total_mb && <VramBar used={g.vram_used_mb ?? 0} total={g.vram_total_mb} label="VRAM" />}
+                  {g.util_pct != null && <MetricBar label="GPU Util" percent={g.util_pct} detail={`${Math.round(g.util_pct)} %`} />}
+                  {g.fan_pct != null && (
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Lüfter: {Math.round(g.fan_pct)}%</div>
+                  )}
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Systemd ── */}
+      {tab === "Systemd" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {!sysd.available ? (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>systemd nicht verfügbar</div>
+          ) : (
+            <>
+              <StatTiles tiles={[
+                { label: "Units gesamt", value: sysd.total ?? 0 },
+                { label: "Laufen",       value: sysd.running ?? 0,       color: "text-emerald-300" },
+                { label: "Failed",       value: sysd.failed_count ?? 0,  color: sysd.failed_count ? "text-red-300" : "text-white" },
+              ]} />
+              {(sysd.failed ?? []).length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 600, color: "#f87171", letterSpacing: "0.07em", textTransform: "uppercase" }}>
+                    Failed Units
+                  </span>
+                  {sysd.failed.map((u, i) => (
+                    <div key={i} style={{ background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.18)", borderRadius: 8, padding: "6px 10px", fontSize: 11.5 }}>
+                      <span style={{ fontFamily: "monospace", color: "#f87171" }}>{u.unit}</span>
+                      {u.desc && <span style={{ color: "rgba(255,255,255,0.4)", marginLeft: 8 }}>{u.desc}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {(sysd.user_services ?? []).length > 0 && (
+                <div>
+                  <span style={{ fontSize: 10.5, fontWeight: 600, color: "rgba(255,255,255,0.35)", letterSpacing: "0.07em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>
+                    Eigene Services
+                  </span>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    {sysd.user_services.slice(0, 20).map((u) => (
+                      <span key={u} style={{ fontSize: 10.5, fontFamily: "monospace", background: "rgba(255,255,255,0.07)", borderRadius: 5, padding: "2px 7px", color: "rgba(255,255,255,0.6)" }}>
+                        {u.replace(".service", "")}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Netzwerk ── */}
+      {tab === "Netzwerk" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <InfoLine items={[
+            ["Gateway", net.gateway],
+            ["DNS",     (net.dns_servers ?? []).join(", ")],
+            ["Pub. Ports", net.public_ports_count ?? 0],
+          ]} />
+          {/* Interfaces */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {(net.interfaces ?? []).map((iface) => (
+              <div key={iface.name} style={{ background: "rgba(0,0,0,0.2)", borderRadius: 8, padding: "8px 10px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
+                  <span style={{
+                    width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+                    background: iface.state === "up" ? "#34d399" : iface.state === "down" ? "#f87171" : "rgba(255,255,255,0.25)",
+                  }} />
+                  <span style={{ fontSize: 12.5, fontWeight: 600, fontFamily: "monospace", color: "rgba(255,255,255,0.8)" }}>{iface.name}</span>
+                  <span style={{ fontSize: 10.5, color: "rgba(255,255,255,0.3)" }}>{iface.state}</span>
+                  {iface.mac && <span style={{ fontSize: 10, fontFamily: "monospace", color: "rgba(255,255,255,0.2)", marginLeft: "auto" }}>{iface.mac}</span>}
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                  {(iface.addrs ?? []).map((a, i) => (
+                    <span key={i} style={{ fontSize: 11, fontFamily: "monospace", color: a.family === "inet" ? "#60a5fa" : "rgba(255,255,255,0.4)" }}>
+                      {a.address}/{a.prefix}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Public listening ports */}
+          {(net.open_ports ?? []).filter(p => p.public).length > 0 && (
+            <div>
+              <span style={{ fontSize: 10.5, fontWeight: 600, color: "rgba(255,255,255,0.35)", letterSpacing: "0.07em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>
+                Öffentliche Ports
+              </span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {net.open_ports.filter(p => p.public).map((p, i) => (
+                  <span key={i} style={{
+                    fontSize: 11, fontFamily: "monospace",
+                    background: [22, 80, 443].includes(p.port) ? "rgba(245,158,11,0.12)" : "rgba(255,255,255,0.07)",
+                    color: [22, 80, 443].includes(p.port) ? "#F59E0B" : "rgba(255,255,255,0.6)",
+                    border: `1px solid ${[22, 80, 443].includes(p.port) ? "rgba(245,158,11,0.25)" : "rgba(255,255,255,0.08)"}`,
+                    borderRadius: 5, padding: "2px 8px",
+                  }}>
+                    :{p.port}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Security ── */}
+      {tab === "Security" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {sec.issue_count > 0 && (
+            <div style={{ background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: 10, padding: "8px 12px", marginBottom: 4 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "#f87171" }}>
+                {sec.issue_count} Problem{sec.issue_count !== 1 ? "e" : ""} erkannt
+              </span>
+            </div>
+          )}
+          <SecCheck
+            ok={sec.firewall && !sec.firewall.includes("inactive") && !sec.firewall.includes("empty") && sec.firewall !== "unknown"}
+            label="Firewall"
+            detail={sec.firewall ?? "–"}
+          />
+          <SecCheck ok={sec.ssh_root_login === false} label="SSH Root-Login deaktiviert" />
+          <SecCheck ok={sec.ssh_pw_auth === false}    label="SSH Passwort-Auth deaktiviert" />
+          <SecCheck ok={sec.fail2ban === true}         label="fail2ban aktiv" />
+          <SecCheck ok={!sec.reboot_required}          label="Kein Reboot ausstehend" />
+          <SecCheck ok={sec.auto_updates === true}     label="Auto-Updates aktiv" />
+          {sec.mac && <SecCheck ok={true} label="MAC-Framework" detail={sec.mac} />}
+          {(sec.issues ?? []).length > 0 && (
+            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+              {sec.issues.map((issue, i) => (
+                <div key={i} style={{ fontSize: 11.5, color: "#fbbf24", display: "flex", alignItems: "center", gap: 6 }}>
+                  <AlertTriangle size={11} style={{ flexShrink: 0 }} />
+                  {issue}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- AI Models ----------------------------------------------------------------
+
+function AIModelsMetrics({ m }) {
+  const loaded    = m.models_loaded     ?? [];
+  const available = m.available_models  ?? [];
+  const typeLabel = {
+    ollama: "Ollama", vllm: "vLLM", llamacpp: "llama.cpp", openai: "OpenAI-compat",
+  }[m.server_type] ?? m.server_type ?? "Unbekannt";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <Cpu size={13} style={{ color: "rgba(255,255,255,0.4)" }} />
+        <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.8)" }}>{typeLabel}</span>
+        {m.server_version && (
+          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", fontFamily: "monospace" }}>v{m.server_version}</span>
+        )}
+        {m.idle && (
+          <span style={{ marginLeft: "auto", fontSize: 10.5, color: "rgba(255,255,255,0.35)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 5, padding: "2px 7px" }}>
+            Idle – kein Modell geladen
+          </span>
+        )}
+      </div>
+
+      <StatTiles tiles={[
+        { label: "Geladen", value: m.models_loaded_count ?? 0, color: m.models_loaded_count > 0 ? "text-emerald-300" : "text-white" },
+        { label: "Verfügbar", value: m.models_available ?? 0 },
+      ]} />
+
+      {loaded.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={{ fontSize: 10.5, fontWeight: 600, color: "rgba(255,255,255,0.35)", letterSpacing: "0.07em", textTransform: "uppercase" }}>
+            Aktive Modelle
+          </span>
+          {loaded.map((model, i) => (
+            <div key={i} style={{ background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.15)", borderRadius: 8, padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 12.5, fontFamily: "monospace", color: "rgba(255,255,255,0.8)" }}>{model.name}</span>
+              {model.vram_mb && (
+                <span style={{ fontSize: 11, fontFamily: "monospace", color: "#34d399" }}>
+                  {Math.round(model.vram_mb / 1024 * 10) / 10} GB VRAM
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {available.length > 0 && (
+        <div>
+          <span style={{ fontSize: 10.5, fontWeight: 600, color: "rgba(255,255,255,0.35)", letterSpacing: "0.07em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>
+            Installierte Modelle
+          </span>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, maxHeight: 200, overflowY: "auto" }}>
+            {available.map((model, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                <span style={{ fontSize: 12, fontFamily: "monospace", color: "rgba(255,255,255,0.65)" }}>{model.name}</span>
+                {model.size_gb && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{model.size_gb} GB</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Bookmarks ----------------------------------------------------------------
+
+function BookmarkMetrics({ m }) {
+  const links = m.links ?? [];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {m.description && (
+        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", margin: 0 }}>{m.description}</p>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 6 }}>
+        {links.map((link, i) => (
+          <a
+            key={i}
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "flex", alignItems: "center", gap: 7, padding: "7px 10px",
+              background: "rgba(255,255,255,0.05)", borderRadius: 8,
+              border: "1px solid rgba(255,255,255,0.08)", textDecoration: "none",
+              transition: "all 0.15s", color: "rgba(255,255,255,0.75)", fontSize: 12,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = "rgba(245,158,11,0.1)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.25)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; }}
+          >
+            <Globe size={12} style={{ color: "#F59E0B", flexShrink: 0 }} />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{link.name}</span>
+          </a>
+        ))}
+        {links.length === 0 && <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", gridColumn: "1 / -1" }}>Keine Links konfiguriert.</p>}
+      </div>
+    </div>
+  );
+}
+
 // --- Fallback -----------------------------------------------------------------
 
 function GenericMetrics({ m }) {
@@ -823,6 +1224,9 @@ const RENDERERS = {
   synology:       SynologyMetrics,
   pfsense:        PfSenseMetrics,
   linux_ssh:      LinuxSSHMetrics,
+  linux_probe:    LinuxProbeMetrics,
+  ai_models:      AIModelsMetrics,
+  bookmarks:      BookmarkMetrics,
   hetzner:        HetznerMetrics,
   proxmox_backup: ProxmoxBackupMetrics,
   cloudflare:     CloudflareMetrics,

@@ -53,7 +53,7 @@ async def ssh_terminal(
 
     # ── 2. Connector laden + Ownership prüfen ─────────────────────────
     connector = await db.get(ConnectorConfig, connector_id)
-    if not connector or connector.type != "linux_ssh" or connector.user_id != user_id:
+    if not connector or connector.type not in ("linux_ssh", "linux_probe") or connector.user_id != user_id:
         await websocket.close(code=4004)
         return
 
@@ -199,7 +199,7 @@ async def ssh_execute(
     Max. 30 Sekunden Laufzeit.
     """
     connector = await db.get(ConnectorConfig, connector_id)
-    if not connector or connector.type != "linux_ssh" or connector.user_id != current_user.id:
+    if not connector or connector.type not in ("linux_ssh", "linux_probe") or connector.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="SSH-Connector nicht gefunden")
 
     if not _SSH_AVAILABLE:
