@@ -50,7 +50,8 @@ function AiConnectorCard({ connector: c }) {
   const SC  = { online: "#34d399", warning: "#fbbf24", offline: "#f87171", error: "#f87171", critical: "#f87171" };
   const sc  = SC[c.status] ?? "rgba(255,255,255,0.25)";
 
-  const models = m.models ?? m.loaded_models ?? [];
+  // Connector returns available_models (string[]) or models_loaded (string[])
+  const models = m.available_models ?? m.models_loaded ?? m.models ?? [];
 
   return (
     <div style={{
@@ -215,7 +216,11 @@ export default function LabCosts() {
   }
 
   const aiConnectors = (data?.connectors ?? []).filter(c => c.type === "ai_models");
-  const totalModels  = aiConnectors.reduce((s, c) => s + (c.metrics?.models_loaded_count ?? c.metrics?.models_loaded ?? 0), 0);
+  const totalModels  = aiConnectors.reduce((s, c) => {
+    const m = c.metrics ?? {};
+    const count = m.models_loaded_count ?? (Array.isArray(m.models_loaded) ? m.models_loaded.length : null) ?? (Array.isArray(m.available_models) ? m.available_models.length : 0);
+    return s + count;
+  }, 0);
   const totalCosts   = costs.reduce((s, e) => s + e.amount, 0);
   const lastCost     = costs.length ? costs[costs.length - 1] : null;
 
@@ -289,6 +294,25 @@ export default function LabCosts() {
           </div>
         </div>
       )}
+
+      {/* External AI API info */}
+      <div style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.18)", borderRadius: 14, padding: "16px 20px" }}>
+        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(99,102,241,0.7)", marginBottom: 10 }}>
+          Externe AI APIs einbinden
+        </div>
+        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", margin: "0 0 10px", lineHeight: 1.6 }}>
+          OpenAI, Groq, Together.ai und andere OpenAI-kompatible Anbieter funktionieren bereits über den <code style={{ background: "rgba(255,255,255,0.07)", padding: "1px 5px", borderRadius: 4, fontSize: 11 }}>ai_models</code> Connector — er listet dann deine verfügbaren Modelle automatisch.
+        </p>
+        <div style={{ background: "rgba(0,0,0,0.25)", borderRadius: 9, padding: "10px 14px", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "rgba(255,255,255,0.6)", lineHeight: 1.8, overflowX: "auto" }}>
+          <span style={{ color: "#94a3b8" }}>type:</span> ai_models<br />
+          <span style={{ color: "#94a3b8" }}>server_type:</span> <span style={{ color: "#a78bfa" }}>openai</span><br />
+          <span style={{ color: "#94a3b8" }}>base_url:</span> <span style={{ color: "#34d399" }}>https://api.openai.com</span><span style={{ color: "rgba(255,255,255,0.3)" }}> # oder api.groq.com/openai/v1 etc.</span><br />
+          <span style={{ color: "#94a3b8" }}>api_key:</span> <span style={{ color: "#fbbf24" }}>sk-...</span>
+        </div>
+        <p style={{ fontSize: 11, color: "rgba(255,255,255,0.28)", margin: "10px 0 0", lineHeight: 1.5 }}>
+          Anthropic (Claude API) ist nicht OpenAI-kompatibel — dafür kommt bald ein eigener Connector-Typ. Bis dahin: Kosten manuell unten eintragen.
+        </p>
+      </div>
 
       {/* Cost tracking */}
       <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, overflow: "hidden" }}>

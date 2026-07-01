@@ -33,7 +33,11 @@ function InterfaceCard({ iface }) {
     return `${b} B`;
   };
 
-  const ips = iface.ip_addresses ?? (iface.ipv4 ? [iface.ipv4] : []);
+  // addrs is [{family: "inet"|"inet6", address, prefix}]
+  const addrs = iface.addrs ?? [];
+  const ipv4s = addrs.filter(a => a.family === "inet").map(a => a.address);
+  const ipv6s = addrs.filter(a => a.family === "inet6").map(a => a.address);
+  const ips   = ipv4s.length ? ipv4s : (iface.ip_addresses ?? (iface.ipv4 ? [iface.ipv4] : []));
 
   return (
     <div style={{
@@ -65,11 +69,11 @@ function InterfaceCard({ iface }) {
               {ip}
             </span>
           ))}
-          {iface.ipv6 && (
-            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.03)", borderRadius: 7, padding: "2px 10px", fontFamily: "'JetBrains Mono', monospace" }}>
-              {iface.ipv6.slice(0, 28)}{iface.ipv6.length > 28 ? "…" : ""}
+          {ipv6s.slice(0, 2).map((ip6, j) => (
+            <span key={j} style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.03)", borderRadius: 7, padding: "2px 10px", fontFamily: "'JetBrains Mono', monospace" }}>
+              {ip6.slice(0, 32)}{ip6.length > 32 ? "…" : ""}
             </span>
-          )}
+          ))}
         </div>
       )}
 
@@ -120,13 +124,18 @@ function PortRow({ port }) {
 function HostNetworkDetail({ connector: c }) {
   const m = c.metrics ?? {};
 
-  // interfaces: try multiple field names the probe might use
-  const interfaces = m.net_interfaces ?? m.interfaces ?? m.network_interfaces ?? [];
-  const ports      = m.listening_ports ?? m.open_ports ?? m.ports ?? [];
+  // Actual data path: connector._build_metrics() wraps into m.network sub-key
+  const net        = m.network ?? {};
+  const interfaces = net.interfaces ?? [];
+  const ports      = net.open_ports ?? [];
+  const gateway    = net.gateway ?? null;
+  const dns        = net.dns_servers ?? [];
 
-  // Summary: total RX/TX
-  const totalRxMb = m.net_rx_mb ?? null;
-  const totalTxMb = m.net_tx_mb ?? null;
+  // Total RX/TX from interface bytes
+  const totalRxBytes = interfaces.reduce((s, i) => s + (i.rx_bytes ?? 0), 0);
+  const totalTxBytes = interfaces.reduce((s, i) => s + (i.tx_bytes ?? 0), 0);
+  const totalRxMb = totalRxBytes > 0 ? totalRxBytes / 1e6 : null;
+  const totalTxMb = totalTxBytes > 0 ? totalTxBytes / 1e6 : null;
 
   const SC = { online: "#34d399", warning: "#fbbf24", offline: "#f87171", error: "#f87171", critical: "#f87171" };
   const sc = SC[c.status] ?? "rgba(255,255,255,0.25)";
@@ -228,6 +237,22 @@ function HostNetworkDetail({ connector: c }) {
             {ports.slice(0, 50).map((p, i) => <PortRow key={i} port={p} />)}
             {ports.length > 50 && <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.2)", padding: "8px 0" }}>+{ports.length - 50} weitere…</div>}
           </div>
+        </div>
+      )}
+
+      {/* Gateway + DNS */}
+      {(gateway || dns.length > 0) && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {gateway && (
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: "rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "4px 12px", fontFamily: "'JetBrains Mono', monospace" }}>
+              GW: {gateway}
+            </span>
+          )}
+          {dns.slice(0, 3).map((d, i) => (
+            <span key={i} style={{ fontSize: 11.5, fontWeight: 600, color: "rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.035)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 8, padding: "4px 12px", fontFamily: "'JetBrains Mono', monospace" }}>
+              DNS: {d}
+            </span>
+          ))}
         </div>
       )}
 

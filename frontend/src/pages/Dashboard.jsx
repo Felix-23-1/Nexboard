@@ -344,6 +344,161 @@ function EventFeed({ connectors }) {
   );
 }
 
+/* ── Mini bar ─────────────────────────────────────────────────── */
+function MiniBar({ value = 0, color }) {
+  const pct = Math.min(100, Math.max(0, value ?? 0));
+  const bc  = pct > 90 ? "#f87171" : pct > 78 ? "#fbbf24" : color;
+  return (
+    <div style={{ height: 3, background: "rgba(255,255,255,0.07)", borderRadius: 2, flex: 1 }}>
+      <div style={{ width: `${pct}%`, height: "100%", borderRadius: 2, background: bc, transition: "width 0.4s ease" }} />
+    </div>
+  );
+}
+
+/* ── Fleet host row ──────────────────────────────────────────── */
+function FleetHostRow({ connector: c, active, onClick }) {
+  const m  = c.metrics ?? {};
+  const sc = STATUS_COLOR[c.status] ?? "rgba(255,255,255,0.25)";
+  return (
+    <button onClick={onClick} style={{
+      width: "100%", padding: "9px 10px", borderRadius: 9, border: "1px solid",
+      borderColor: active ? "rgba(16,185,129,0.35)" : "transparent",
+      background: active ? "rgba(16,185,129,0.07)" : "transparent",
+      cursor: "pointer", textAlign: "left", transition: "all 0.15s",
+    }}
+    onMouseEnter={e => { if (!active) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+    onMouseLeave={e => { if (!active) e.currentTarget.style.background = "transparent"; }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+        <span style={{ width: 5, height: 5, borderRadius: "50%", background: sc, boxShadow: active ? `0 0 5px ${sc}` : "none", display: "inline-block", flexShrink: 0 }} />
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: active ? "#10B981" : "rgba(255,255,255,0.72)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+          {c.name}
+        </span>
+        {m.temp_c != null && <span style={{ fontSize: 9, color: m.temp_c > 75 ? "#fbbf24" : "rgba(255,255,255,0.2)", fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>{m.temp_c}°</span>}
+      </div>
+      {c.status === "online" && m.cpu_pct != null ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          {[
+            { label: "CPU", pct: m.cpu_pct, color: "#F59E0B" },
+            { label: "RAM", pct: m.mem_pct, color: "#10B981" },
+            { label: "Disk", pct: m.disk_pct, color: "#6366f1" },
+          ].filter(r => r.pct != null).map(row => (
+            <div key={row.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ fontSize: 8, color: "rgba(255,255,255,0.2)", width: 22, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{Math.round(row.pct)}%</span>
+              <MiniBar value={row.pct} color={row.color} />
+              <span style={{ fontSize: 8, color: "rgba(255,255,255,0.15)", width: 20 }}>{row.label}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontSize: 9.5, color: sc }}>{STATUS_LABEL[c.status] ?? c.status}</div>
+      )}
+    </button>
+  );
+}
+
+/* ── Fleet Panel (left sidebar) ──────────────────────────────── */
+function FleetPanel({ hosts, selected, onSelect }) {
+  return (
+    <div style={{
+      width: 196, flexShrink: 0,
+      background: "rgba(255,255,255,0.032)",
+      border: "1px solid rgba(255,255,255,0.07)",
+      borderRadius: 16, overflow: "hidden",
+      alignSelf: "flex-start", position: "sticky", top: 0,
+    }}>
+      <div style={{ padding: "9px 14px", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", gap: 7 }}>
+        <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.28)", flex: 1 }}>Das Lab</span>
+        <span style={{ background: "rgba(255,255,255,0.06)", borderRadius: 10, padding: "1px 6px", fontSize: 9.5, fontWeight: 600, color: "rgba(255,255,255,0.28)" }}>{hosts.length}</span>
+      </div>
+      <div style={{ padding: "6px", display: "flex", flexDirection: "column", gap: 2 }}>
+        {hosts.map(h => (
+          <FleetHostRow key={h.id} connector={h} active={h.id === selected} onClick={() => onSelect(h.id === selected ? null : h.id)} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Inline ring gauge for dashboard ─────────────────────────── */
+function DashRing({ value = 0, label, sublabel, color = "#F59E0B" }) {
+  const r    = 30;
+  const circ = 2 * Math.PI * r;
+  const pct  = Math.min(100, Math.max(0, value || 0));
+  const fill = circ * pct / 100;
+  const ac   = pct > 90 ? "#f87171" : pct > 78 ? "#fbbf24" : color;
+  const sz   = 82;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+      <div style={{ position: "relative", width: sz, height: sz }}>
+        <svg width={sz} height={sz} viewBox="0 0 76 76">
+          <circle cx="38" cy="38" r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="5.5" />
+          {pct > 0 && (
+            <circle cx="38" cy="38" r={r} fill="none" stroke={ac} strokeWidth="5.5"
+              strokeDasharray={`${fill} ${circ - fill}`}
+              strokeDashoffset={circ * 0.25}
+              strokeLinecap="round"
+              style={{ transition: "stroke-dasharray 0.55s ease, stroke 0.3s ease" }}
+            />
+          )}
+        </svg>
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ fontSize: 16, fontWeight: 700, color: ac, lineHeight: 1 }}>{Math.round(pct)}</span>
+          <span style={{ fontSize: 7.5, color: "rgba(255,255,255,0.22)", marginTop: 1 }}>%</span>
+        </div>
+      </div>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "rgba(255,255,255,0.45)" }}>{label}</div>
+        {sublabel && <div style={{ fontSize: 8, color: "rgba(255,255,255,0.2)", marginTop: 1 }}>{sublabel}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ── Selected-host gauges bar ─────────────────────────────────── */
+function HostGauges({ connector: c }) {
+  const m      = c.metrics ?? {};
+  const memGb  = m.mem_total != null ? `${(m.mem_total / 1e9).toFixed(0)} GB` : null;
+  const diskGb = m.disk_total != null ? `${(m.disk_total / 1e9).toFixed(0)} GB` : null;
+  const load1  = m.load1 != null ? m.load1.toFixed(2) : null;
+  const uptime = m.uptime_s != null ? `${Math.floor(m.uptime_s / 86400)}d ${Math.floor((m.uptime_s % 86400) / 3600)}h` : null;
+
+  // GPU: pick first
+  const gpu    = m.gpu?.gpus?.[0] ?? null;
+  const gpuPct = gpu ? ((gpu.vram_used_mb ?? 0) / Math.max(gpu.vram_total_mb ?? 1, 1)) * 100 : null;
+  const gpuLbl = gpu?.name?.split(" ").slice(-1)[0] ?? null;
+
+  return (
+    <div style={{
+      background: "rgba(255,255,255,0.038)",
+      border: "1px solid rgba(255,255,255,0.09)",
+      borderRadius: 14, padding: "12px 16px",
+      display: "flex", alignItems: "center", gap: 16,
+    }}>
+      {/* Host meta */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
+        {m.os && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.28)", marginTop: 2 }}>{m.os}</div>}
+        <div style={{ display: "flex", gap: 10, marginTop: 5, flexWrap: "wrap" }}>
+          {load1 && <span style={{ fontSize: 9, color: "rgba(255,255,255,0.22)" }}>Load: <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{load1}</span></span>}
+          {uptime && <span style={{ fontSize: 9, color: "rgba(255,255,255,0.22)" }}>Up: {uptime}</span>}
+          {m.temp_c != null && <span style={{ fontSize: 9, color: m.temp_c > 75 ? "#fbbf24" : "rgba(255,255,255,0.22)" }}>{m.temp_c}°C</span>}
+          {(m.systemd?.failed_count ?? 0) > 0 && <span style={{ fontSize: 9, color: "#fbbf24" }}>{m.systemd.failed_count} svc failed</span>}
+        </div>
+      </div>
+      {/* Rings */}
+      <div style={{ display: "flex", gap: 12, flexShrink: 0 }}>
+        <DashRing value={m.cpu_pct}  label="CPU"  sublabel={m.cpu_cores ? `${m.cpu_cores}c` : null} color="#F59E0B" />
+        <DashRing value={m.mem_pct}  label="RAM"  sublabel={memGb} color="#10B981" />
+        <DashRing value={m.disk_pct} label="Disk" sublabel={diskGb} color="#6366f1" />
+        {m.gpu?.available && gpuPct != null && (
+          <DashRing value={gpuPct} label="VRAM" sublabel={gpuLbl} color="#8B5CF6" />
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ── Dashboard ────────────────────────────────────────────────── */
 export default function Dashboard() {
   const [data, setData]             = useState(null);
@@ -351,6 +506,7 @@ export default function Dashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError]           = useState(null);
   const [search, setSearch]         = useState("");
+  const [primaryHost, setPrimaryHost] = useState(null);
   const now = useClock();
 
   async function load(showRefresh = false) {
@@ -374,6 +530,16 @@ export default function Dashboard() {
     return () => clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-select first linux host when data loads
+  useEffect(() => {
+    if (!data) return;
+    const hosts = (data.connectors ?? []).filter(c => c.type === "linux_probe" || c.type === "linux_ssh");
+    if (hosts.length && !hosts.find(h => h.id === primaryHost)) {
+      setPrimaryHost(hosts[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   function calcStats() {
     const all = data?.connectors ?? [];
@@ -432,6 +598,8 @@ export default function Dashboard() {
 
   const stats        = calcStats();
   const groups       = getGroups();
+  const linuxHosts   = (data?.connectors ?? []).filter(c => c.type === "linux_probe" || c.type === "linux_ssh");
+  const selectedHost = linuxHosts.find(h => h.id === primaryHost) ?? null;
   const overall      = stats.offline > 0 ? "offline" : stats.warning > 0 ? "warning" : "online";
   const overallColor = overall === "online" ? "#34d399" : overall === "warning" ? "#fbbf24" : "#f87171";
   const overallText  = overall === "online" ? "Alles in Ordnung" : overall === "warning" ? "Warnung aktiv" : "System kritisch";
@@ -468,13 +636,23 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Two-column main layout ──────────────────────────────── */}
-      <div style={{ display: "flex", gap: 24, alignItems: "flex-start", flex: 1 }}>
+      {/* ── Three-column main layout ────────────────────────────── */}
+      <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flex: 1 }}>
 
-        {/* Left: stat pills + search + groups */}
-        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 24 }}>
+        {/* LEFT: Fleet panel – only when linux hosts configured */}
+        {linuxHosts.length > 0 && (
+          <FleetPanel hosts={linuxHosts} selected={primaryHost} onSelect={setPrimaryHost} />
+        )}
 
-          {/* Stat pills */}
+        {/* CENTER: host gauges + stat pills + search + groups */}
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 20 }}>
+
+          {/* Selected host ring gauges */}
+          {selectedHost && selectedHost.metrics?.cpu_pct != null && (
+            <HostGauges connector={selectedHost} />
+          )}
+
+          {/* Stat pills – filter out linux hosts already shown in fleet panel */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {[
               { label: "Services",   value: stats.total,       color: "var(--text-2)" },

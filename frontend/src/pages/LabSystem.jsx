@@ -1,11 +1,22 @@
 /**
  * LabSystem – Detailed system metrics for linux_probe / linux_ssh hosts.
- * Host-switcher pills · CPU/RAM/Disk ring gauges · Memory breakdown ·
- * Disk mounts · Systemd · GPU
+ * Reads actual field names from connector.py _build_metrics:
+ *   m.cpu_pct, m.mem_pct, m.disk_pct (top-level)
+ *   m.mem_total / m.mem_used (bytes)
+ *   m.disk_total / m.disk_used (bytes)
+ *   m.disks[].{mount, pct, total, used, avail} (bytes)
+ *   m.load1, m.load5, m.load15 (flat)
+ *   m.uptime_s, m.temp_c, m.os, m.hostname
+ *   m.gpu.{available, gpus[].{name, vram_total_mb, vram_used_mb, util_pct, temp_c, power_w}}
+ *   m.systemd.{running, failed_count, failed[].{unit,desc}}
  */
 import { useEffect, useState } from "react";
 import { RefreshCw, Cpu, HardDrive, Database, AlertTriangle, CheckCircle, Server } from "lucide-react";
 import { api } from "../api/client";
+
+/* ── helpers ─────────────────────────────────────────────────── */
+const b2g  = (b)  => b != null ? (b / 1e9).toFixed(1) : null;
+const b2gb = (b)  => b != null ? `${(b / 1e9).toFixed(1)} GB` : null;
 
 /* ── Ring Gauge ──────────────────────────────────────────────── */
 function RingGauge({ value = 0, label, sublabel, color = "#F59E0B", size = 110 }) {
@@ -67,19 +78,18 @@ function Section({ title, icon, children }) {
         <span style={{ color: "rgba(255,255,255,0.35)" }}>{icon}</span>
         <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.11em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)" }}>{title}</span>
       </div>
-      <div style={{ padding: "14px 16px" }}>
-        {children}
-      </div>
+      <div style={{ padding: "14px 16px" }}>{children}</div>
     </div>
   );
 }
 
-/* ── Stat key/value pair ─────────────────────────────────────── */
+/* ── KV pair ─────────────────────────────────────────────────── */
 function KV({ label, value, mono = false }) {
+  if (value == null || value === "") return null;
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "4px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
       <span style={{ fontSize: 11.5, color: "rgba(255,255,255,0.38)" }}>{label}</span>
-      <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.75)", fontFamily: mono ? "'JetBrains Mono', monospace" : undefined }}>{value ?? "–"}</span>
+      <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.75)", fontFamily: mono ? "'JetBrains Mono', monospace" : undefined }}>{value}</span>
     </div>
   );
 }
@@ -88,30 +98,44 @@ function KV({ label, value, mono = false }) {
 function HostDetail({ connector: c }) {
   const m   = c.metrics ?? {};
   const gpu = m.gpu ?? {};
-
-  const diskPct   = m.disk_pct ?? 0;
-  const diskUsed  = m.disk_used_gb  != null ? `${m.disk_used_gb.toFixed(1)} GB` : null;
-  const diskTotal = m.disk_total_gb != null ? `${m.disk_total_gb.toFixed(1)} GB` : null;
-  const memTotal  = m.mem_total_gb  != null ? `${m.mem_total_gb.toFixed(1)} GB`  : null;
-  const memUsed   = m.mem_used_gb   != null ? `${m.mem_used_gb.toFixed(1)} GB`   : null;
-
-  // Load average
-  const load = m.load_avg;
-  const loadStr = load
-    ? (Array.isArray(load)
-        ? `${load[0]?.toFixed(2)} / ${load[1]?.toFixed(2)} / ${load[2]?.toFixed(2)}`
-        : `${load["1m"]?.toFixed(2) ?? "–"} / ${load["5m"]?.toFixed(2) ?? "–"} / ${load["15m"]?.toFixed(2) ?? "–"}`)
-    : null;
-
-  // Disk mounts
-  const mounts = m.disks ?? [];
-
-  // Systemd
   const svc = m.systemd ?? {};
 
-  // Status color
-  const SC = { online: "#34d399", warning: "#fbbf24", offline: "#f87171", error: "#f87171", critical: "#f87171", unknown: "rgba(255,255,255,0.25)" };
-  const sc = SC[c.status] ?? SC.unknown;
+  // Convert bytes → GB labels
+  const memTotalGb = m.mem_total != null ? `${(m.mem_total / 1e9).toFixed(1)} GB` : null;
+  const memUsedGb  = m.mem_used  != null ? `${(m.mem_used  / 1e9).toFixed(1)} GB` : null;
+  const memFreeGb  = (m.mem_total != null && m.mem_used != null)
+    ? `${((m.mem_total - m.mem_used) / 1e9).toFixed(1)} GB` : null;
+  const diskTotalGb = m.disk_total != null ? `${(m.disk_total / 1e9).toFixed(1)} GB` : null;
+  const diskUsedGb  = m.disk_used  != null ? `${(m.disk_used  / 1e9).toFixed(1)} GB` : null;
+
+  // Uptime in days
+  const uptimeDays = m.uptime_s != null ? Math.floor(m.uptime_s / 86400) : null;
+  const uptimeH    = m.uptime_s != null ? Math.floor((m.uptime_s % 86400) / 3600) : null;
+
+  // Load averages (flat fields)
+  const loadStr = m.load1 != null
+    ? `${m.load1.toFixed(2)} / ${m.load5?.toFixed(2) ?? "–"} / ${m.load15?.toFixed(2) ?? "–"}`
+    : null;
+
+  // Disk mounts (bytes)
+  const mounts = (m.disks ?? []).filter(d => d.mount && d.mount !== "none");
+
+  // Failed systemd units (array of objects {unit, desc})
+  const failedUnits = (svc.failed ?? []).map(f => f.unit ?? f);
+
+  // GPU: pick first GPU for display
+  const primaryGpu = (gpu.gpus ?? [])[0] ?? null;
+  const gpuName    = primaryGpu?.name ?? null;
+  const gpuVramTotal = primaryGpu?.vram_total_mb != null ? `${(primaryGpu.vram_total_mb / 1024).toFixed(1)} GB` : null;
+  const gpuVramUsed  = primaryGpu?.vram_used_mb  != null ? `${(primaryGpu.vram_used_mb  / 1024).toFixed(1)} GB` : null;
+  const gpuVramUsedPct = (primaryGpu?.vram_used_mb != null && primaryGpu?.vram_total_mb)
+    ? (primaryGpu.vram_used_mb / primaryGpu.vram_total_mb) * 100 : null;
+  const gpuUtilPct   = primaryGpu?.util_pct ?? null;
+  const gpuTempC     = primaryGpu?.temp_c ?? null;
+  const gpuPowerW    = primaryGpu?.power_w ?? null;
+
+  const SC = { online: "#34d399", warning: "#fbbf24", offline: "#f87171", error: "#f87171", critical: "#f87171" };
+  const sc = SC[c.status] ?? "rgba(255,255,255,0.25)";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, height: "100%", overflowY: "auto", paddingBottom: 24 }}>
@@ -123,19 +147,22 @@ function HostDetail({ connector: c }) {
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text-1)", lineHeight: 1 }}>{c.name}</div>
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 4, display: "flex", gap: 12 }}>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 4, display: "flex", gap: 12, flexWrap: "wrap" }}>
             <span style={{ color: sc, display: "flex", alignItems: "center", gap: 4 }}>
               <span style={{ width: 5, height: 5, borderRadius: "50%", background: sc, boxShadow: `0 0 6px ${sc}`, display: "inline-block" }} />
               {c.status}
             </span>
-            {m.os_pretty && <span>{m.os_pretty}</span>}
+            {m.os && <span>{m.os}</span>}
             {m.hostname && <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>{m.hostname}</span>}
           </div>
         </div>
-        {m.uptime_days != null && (
+        {uptimeDays != null && (
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text-1)", fontVariantNumeric: "tabular-nums" }}>{m.uptime_days}</div>
-            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>Tage uptime</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text-1)", fontVariantNumeric: "tabular-nums" }}>
+              {uptimeDays}<span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginLeft: 2 }}>d</span>
+              {uptimeH != null && <span style={{ fontSize: 13 }}> {uptimeH}<span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginLeft: 1 }}>h</span></span>}
+            </div>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>uptime</div>
           </div>
         )}
       </div>
@@ -149,25 +176,27 @@ function HostDetail({ connector: c }) {
 
       {/* Ring gauges */}
       <div style={{ display: "flex", justifyContent: "space-around", background: "rgba(255,255,255,0.038)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: "20px 16px" }}>
-        <RingGauge value={m.cpu_pct} label="CPU" sublabel={m.cpu_cores ? `${m.cpu_cores} Cores` : null} color="#F59E0B" />
+        <RingGauge value={m.cpu_pct}  label="CPU"  sublabel={m.cpu_cores ? `${m.cpu_cores} Cores` : null} color="#F59E0B" />
         <div style={{ width: 1, background: "rgba(255,255,255,0.07)", alignSelf: "stretch" }} />
-        <RingGauge value={m.mem_pct} label="RAM" sublabel={memTotal} color="#10B981" />
+        <RingGauge value={m.mem_pct}  label="RAM"  sublabel={memTotalGb} color="#10B981" />
         <div style={{ width: 1, background: "rgba(255,255,255,0.07)", alignSelf: "stretch" }} />
-        <RingGauge value={diskPct}   label="Disk" sublabel={diskTotal} color="#6366f1" />
+        <RingGauge value={m.disk_pct} label="Disk" sublabel={diskTotalGb} color="#6366f1" />
       </div>
 
-      {/* CPU details */}
+      {/* CPU section */}
       <Section title="CPU" icon={<Cpu size={13} />}>
         <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-          {m.cpu_model && <KV label="Modell" value={m.cpu_model} mono />}
-          {m.cpu_cores && <KV label="Kerne" value={m.cpu_cores} />}
-          {m.cpu_freq_mhz && <KV label="Frequenz" value={`${(m.cpu_freq_mhz / 1000).toFixed(1)} GHz`} />}
-          {loadStr && <KV label="Load Avg (1/5/15m)" value={loadStr} mono />}
-          {m.cpu_temp_c && <KV label="Temperatur" value={`${m.cpu_temp_c}°C`} />}
+          <KV label="Modell"           value={m.cpu_model} mono />
+          <KV label="Kerne"            value={m.cpu_cores} />
+          <KV label="Load Avg (1/5/15m)" value={loadStr} mono />
+          <KV label="Temperatur"       value={m.temp_c != null ? `${m.temp_c}°C` : null} />
+          <KV label="Architektur"      value={m.arch} />
+          <KV label="Kernel"           value={m.kernel} mono />
+          {m.is_vm && <KV label="Virtualisierung" value={m.vm_type ?? "VM"} />}
         </div>
         {m.cpu_pct != null && (
           <div style={{ marginTop: 10 }}>
-            <Bar value={m.cpu_pct} color="#F59E0B" label="CPU-Auslastung" sublabel={`${Math.round(m.cpu_pct ?? 0)}% belegt`} />
+            <Bar value={m.cpu_pct} color="#F59E0B" label="CPU-Auslastung" />
           </div>
         )}
       </Section>
@@ -175,62 +204,61 @@ function HostDetail({ connector: c }) {
       {/* Memory */}
       <Section title="Arbeitsspeicher" icon={<Database size={13} />}>
         <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-          {memTotal  && <KV label="Gesamt" value={memTotal} />}
-          {memUsed   && <KV label="Belegt" value={memUsed} />}
-          {m.mem_cached_gb != null && <KV label="Gecacht" value={`${m.mem_cached_gb.toFixed(1)} GB`} />}
-          {m.mem_free_gb   != null && <KV label="Frei" value={`${m.mem_free_gb.toFixed(1)} GB`} />}
+          <KV label="Gesamt" value={memTotalGb} />
+          <KV label="Belegt" value={memUsedGb} />
+          <KV label="Frei"   value={memFreeGb} />
         </div>
         {m.mem_pct != null && (
           <div style={{ marginTop: 10 }}>
-            <Bar value={m.mem_pct} color="#10B981" label="RAM-Auslastung" sublabel={memUsed && memTotal ? `${memUsed} von ${memTotal}` : null} />
+            <Bar value={m.mem_pct} color="#10B981" label="RAM-Auslastung"
+              sublabel={memUsedGb && memTotalGb ? `${memUsedGb} von ${memTotalGb}` : null} />
           </div>
         )}
       </Section>
 
-      {/* Disk mounts – if detailed mount data available */}
+      {/* Disk mounts */}
       {mounts.length > 0 ? (
-        <Section title="Datenträger" icon={<HardDrive size={13} />}>
+        <Section title={`Datenträger (${mounts.length})`} icon={<HardDrive size={13} />}>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {mounts.map((disk, i) => (
-              <div key={i}>
-                <Bar
-                  value={disk.use_pct ?? disk.percent}
-                  color="#6366f1"
-                  label={disk.mountpoint ?? disk.mount ?? disk.device ?? `Disk ${i + 1}`}
-                  sublabel={disk.used_gb != null
-                    ? `${disk.used_gb.toFixed(1)} GB von ${disk.total_gb?.toFixed(1) ?? "?"} GB`
-                    : disk.fstype ?? null}
-                />
-              </div>
+              <Bar
+                key={i}
+                value={disk.pct}
+                color="#6366f1"
+                label={disk.mount}
+                sublabel={disk.used != null && disk.total != null
+                  ? `${(disk.used / 1e9).toFixed(1)} GB von ${(disk.total / 1e9).toFixed(1)} GB`
+                  : null}
+              />
             ))}
           </div>
         </Section>
-      ) : (
-        /* Single disk fallback */
-        diskPct > 0 && (
-          <Section title="Datenträger" icon={<HardDrive size={13} />}>
-            <Bar value={diskPct} color="#6366f1" label="/" sublabel={diskUsed && diskTotal ? `${diskUsed} von ${diskTotal}` : null} />
-          </Section>
-        )
+      ) : m.disk_pct != null && (
+        <Section title="Datenträger" icon={<HardDrive size={13} />}>
+          <Bar value={m.disk_pct} color="#6366f1" label="/"
+            sublabel={diskUsedGb && diskTotalGb ? `${diskUsedGb} von ${diskTotalGb}` : null} />
+        </Section>
       )}
 
       {/* GPU */}
       {gpu.available && (
-        <Section title="GPU" icon={<Cpu size={13} />}>
+        <Section title={`GPU${gpu.gpu_count > 1 ? ` (${gpu.gpu_count}×)` : ""}`} icon={<Cpu size={13} />}>
           <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-            {gpu.model      && <KV label="Modell" value={gpu.model} mono />}
-            {gpu.vram_total_gb != null && <KV label="VRAM gesamt" value={`${gpu.vram_total_gb} GB`} />}
-            {gpu.vram_used_gb  != null && <KV label="VRAM belegt" value={`${gpu.vram_used_gb} GB`} />}
-            {gpu.driver_version && <KV label="Treiber" value={gpu.driver_version} mono />}
+            <KV label="Modell"   value={gpuName} mono />
+            <KV label="VRAM"     value={gpuVramTotal} />
+            <KV label="Belegt"   value={gpuVramUsed} />
+            <KV label="Temp"     value={gpuTempC != null ? `${gpuTempC}°C` : null} />
+            <KV label="Leistung" value={gpuPowerW != null ? `${gpuPowerW} W` : null} />
           </div>
-          {gpu.utilization_pct != null && (
+          {gpuUtilPct != null && (
             <div style={{ marginTop: 10 }}>
-              <Bar value={gpu.utilization_pct} color="#8B5CF6" label="GPU-Auslastung" />
+              <Bar value={gpuUtilPct} color="#8B5CF6" label="GPU-Auslastung" />
             </div>
           )}
-          {gpu.vram_total_gb && gpu.vram_used_gb && (
+          {gpuVramUsedPct != null && (
             <div style={{ marginTop: 8 }}>
-              <Bar value={(gpu.vram_used_gb / gpu.vram_total_gb) * 100} color="#a78bfa" label="VRAM-Auslastung" sublabel={`${gpu.vram_used_gb} / ${gpu.vram_total_gb} GB`} />
+              <Bar value={gpuVramUsedPct} color="#a78bfa" label="VRAM-Auslastung"
+                sublabel={gpuVramUsed && gpuVramTotal ? `${gpuVramUsed} / ${gpuVramTotal}` : null} />
             </div>
           )}
         </Section>
@@ -240,15 +268,14 @@ function HostDetail({ connector: c }) {
       {(svc.running != null || svc.failed_count != null) && (
         <Section title="Systemd-Services" icon={<CheckCircle size={13} />}>
           <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-            {svc.running       != null && <KV label="Aktiv" value={svc.running} />}
-            {svc.inactive      != null && <KV label="Inaktiv" value={svc.inactive} />}
-            {svc.failed_count  != null && <KV label="Failed" value={svc.failed_count} />}
-            {svc.total         != null && <KV label="Gesamt" value={svc.total} />}
+            <KV label="Aktiv"   value={svc.running} />
+            <KV label="Gesamt"  value={svc.total} />
+            <KV label="Failed"  value={svc.failed_count} />
           </div>
-          {(svc.failed_units ?? []).length > 0 && (
+          {failedUnits.length > 0 && (
             <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 4 }}>
               <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.25)", marginBottom: 2 }}>Failed Units</div>
-              {svc.failed_units.map(u => (
+              {failedUnits.map(u => (
                 <div key={u} style={{ fontSize: 11.5, color: "#f87171", background: "rgba(248,113,113,0.07)", border: "1px solid rgba(248,113,113,0.14)", borderRadius: 7, padding: "4px 10px", fontFamily: "'JetBrains Mono', monospace" }}>
                   {u}
                 </div>
@@ -258,36 +285,23 @@ function HostDetail({ connector: c }) {
         </Section>
       )}
 
-      {/* Offline placeholder */}
-      {c.status !== "online" && !c.metrics?.cpu_pct && (
+      {/* No metrics state */}
+      {c.status !== "online" && m.cpu_pct == null && (
         <div style={{ textAlign: "center", padding: "32px", color: "rgba(255,255,255,0.2)", fontSize: 12 }}>
-          Keine Metriken verfügbar – Host ist {c.status}
+          Keine Metriken verfügbar — Host ist {c.status}
         </div>
       )}
     </div>
   );
 }
 
-/* ── Empty state ─────────────────────────────────────────────── */
-function EmptyState() {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 12 }}>
-      <Cpu size={40} style={{ color: "rgba(255,255,255,0.10)" }} />
-      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", textAlign: "center" }}>
-        Keine Linux-Hosts konfiguriert.<br />
-        <span style={{ fontSize: 11 }}>Füge einen <code style={{ background: "rgba(255,255,255,0.06)", padding: "1px 5px", borderRadius: 4 }}>linux_probe</code> Connector hinzu.</span>
-      </div>
-    </div>
-  );
-}
-
 /* ── LabSystem ───────────────────────────────────────────────── */
 export default function LabSystem() {
-  const [data, setData]           = useState(null);
-  const [loading, setLoading]     = useState(true);
+  const [data, setData]             = useState(null);
+  const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError]         = useState(null);
-  const [selected, setSelected]   = useState(null);
+  const [error, setError]           = useState(null);
+  const [selected, setSelected]     = useState(null);
 
   async function load(showRefresh = false) {
     if (showRefresh) setRefreshing(true);
@@ -296,7 +310,6 @@ export default function LabSystem() {
     try {
       const d = await api.status.detailed();
       setData(d);
-      // auto-select first linux host
       const hosts = (d?.connectors ?? []).filter(c => c.type === "linux_probe" || c.type === "linux_ssh");
       if (hosts.length && (selected === null || !hosts.find(h => h.id === selected))) {
         setSelected(hosts[0].id);
@@ -316,17 +329,15 @@ export default function LabSystem() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const hosts    = (data?.connectors ?? []).filter(c => c.type === "linux_probe" || c.type === "linux_ssh");
-  const current  = hosts.find(h => h.id === selected) ?? null;
-
-  const SC = { online: "#34d399", warning: "#fbbf24", offline: "#f87171", error: "#f87171", critical: "#f87171", unknown: "rgba(255,255,255,0.25)" };
+  const hosts   = (data?.connectors ?? []).filter(c => c.type === "linux_probe" || c.type === "linux_ssh");
+  const current = hosts.find(h => h.id === selected) ?? null;
+  const SC      = { online: "#34d399", warning: "#fbbf24", offline: "#f87171", error: "#f87171", critical: "#f87171" };
 
   if (loading) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
       <span style={{ fontSize: 13, color: "var(--text-3)" }}>Lade System-Daten…</span>
     </div>
   );
-
   if (error) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
       <div style={{ textAlign: "center" }}>
@@ -339,12 +350,10 @@ export default function LabSystem() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", padding: "28px 32px", gap: 20 }}>
-
-      {/* Page header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-1)", margin: 0, lineHeight: 1 }}>System</h1>
-          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 4 }}>Detaillierte Hardware- und OS-Metriken</p>
+          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 4 }}>Hardware- und OS-Metriken</p>
         </div>
         <button onClick={() => load(true)} disabled={refreshing} className="btn-ghost" style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, padding: "7px 14px" }}>
           <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />
@@ -352,26 +361,21 @@ export default function LabSystem() {
         </button>
       </div>
 
-      {/* Host switcher pills */}
       {hosts.length > 0 && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {hosts.map(h => {
             const active = h.id === selected;
-            const sc = SC[h.status] ?? SC.unknown;
+            const sc = SC[h.status] ?? "rgba(255,255,255,0.25)";
             return (
-              <button
-                key={h.id}
-                onClick={() => setSelected(h.id)}
-                style={{
-                  display: "flex", alignItems: "center", gap: 8,
-                  padding: "6px 14px", borderRadius: 20, border: "1px solid",
-                  borderColor: active ? "rgba(16,185,129,0.45)" : "rgba(255,255,255,0.09)",
-                  background: active ? "rgba(16,185,129,0.10)" : "rgba(255,255,255,0.04)",
-                  cursor: "pointer", transition: "all 0.15s",
-                  fontSize: 12.5, fontWeight: active ? 600 : 500,
-                  color: active ? "#10B981" : "rgba(255,255,255,0.55)",
-                }}
-              >
+              <button key={h.id} onClick={() => setSelected(h.id)} style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "6px 14px", borderRadius: 20, border: "1px solid",
+                borderColor: active ? "rgba(16,185,129,0.45)" : "rgba(255,255,255,0.09)",
+                background: active ? "rgba(16,185,129,0.10)" : "rgba(255,255,255,0.04)",
+                cursor: "pointer", transition: "all 0.15s",
+                fontSize: 12.5, fontWeight: active ? 600 : 500,
+                color: active ? "#10B981" : "rgba(255,255,255,0.55)",
+              }}>
                 <span style={{ width: 5, height: 5, borderRadius: "50%", background: sc, boxShadow: active ? `0 0 6px ${sc}` : "none", display: "inline-block", flexShrink: 0 }} />
                 {h.name}
                 <span style={{ fontSize: 9.5, color: active ? "rgba(16,185,129,0.6)" : "rgba(255,255,255,0.2)", fontWeight: 400 }}>
@@ -383,10 +387,15 @@ export default function LabSystem() {
         </div>
       )}
 
-      {/* Detail area */}
       <div style={{ flex: 1, minHeight: 0 }}>
         {hosts.length === 0 ? (
-          <EmptyState />
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 12 }}>
+            <Cpu size={40} style={{ color: "rgba(255,255,255,0.10)" }} />
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", textAlign: "center" }}>
+              Keine Linux-Hosts konfiguriert.<br />
+              <span style={{ fontSize: 11 }}>Füge einen <code style={{ background: "rgba(255,255,255,0.06)", padding: "1px 5px", borderRadius: 4 }}>linux_probe</code> Connector hinzu.</span>
+            </div>
+          </div>
         ) : current ? (
           <HostDetail connector={current} />
         ) : (
