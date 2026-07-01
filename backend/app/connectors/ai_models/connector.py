@@ -290,8 +290,24 @@ async def _fetch_usage(client: httpx.AsyncClient, base_url: str) -> dict | None:
     if "openai.com" in url_lower:
         result: dict = {"provider": "openai", "currency": "USD"}
         now = datetime.utcnow()
+        start = now.strftime("%Y-%m-01")
+        end   = now.strftime("%Y-%m-%d")
 
-        # Subscription (hard limit)
+        # Legacy billing (deprecated but still active for many accounts)
+        try:
+            r = await client.get(
+                f"https://api.openai.com/dashboard/billing/usage?start_date={start}&end_date={end}",
+                timeout=8,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                total_cents = data.get("total_usage", 0)
+                result["credits_used"] = round(total_cents / 100, 4)
+                result["period"]       = f"{start} – {end}"
+        except Exception:
+            pass
+
+        # Subscription limit
         try:
             r = await client.get(
                 "https://api.openai.com/dashboard/billing/subscription", timeout=8
@@ -299,28 +315,14 @@ async def _fetch_usage(client: httpx.AsyncClient, base_url: str) -> dict | None:
             if r.status_code == 200:
                 sub = r.json()
                 result["credits_limit"] = round(sub.get("hard_limit_usd", 0), 2)
-                result["plan"] = sub.get("plan", {}).get("title")
+                result["plan"]          = sub.get("plan", {}).get("title")
         except Exception:
             pass
 
-        # Monthly usage
-        try:
-            start = now.strftime("%Y-%m-01")
-            end   = now.strftime("%Y-%m-%d")
-            r = await client.get(
-                f"https://api.openai.com/dashboard/billing/usage?start_date={start}&end_date={end}",
-                timeout=8,
-            )
-            if r.status_code == 200:
-                data = r.json()
-                total_cents = data.get("total_usage", 0)   # in cents
-                result["credits_used"]  = round(total_cents / 100, 4)
-                limit = result.get("credits_limit")
-                if limit:
-                    result["credits_remaining"] = round(limit - result["credits_used"], 2)
-                result["period"] = f"{start} – {end}"
-        except Exception:
-            pass
+        used  = result.get("credits_used")
+        limit = result.get("credits_limit")
+        if limit and used is not None:
+            result["credits_remaining"] = round(limit - used, 2)
 
         return result if len(result) > 2 else None  # mindestens ein echtes Feld
 

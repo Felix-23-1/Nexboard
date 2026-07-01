@@ -7,6 +7,7 @@ import { RefreshCw, Plug, Search, AlertTriangle, CheckCircle, X, HardDrive, Lock
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import ConnectorIcon from "../components/ConnectorIcon";
+import AiChatWidget from "../components/AiChatWidget";
 
 /* ── Connector config ────────────────────────────────────────── */
 const TYPE_CFG = {
@@ -505,7 +506,7 @@ const LAYOUT_KEY = "nexboard_dashboard_layout";
 const DEFAULT_LAYOUT = {
   showFleet:  true,
   showEvents: true,
-  center:     ["gauges", "pills", "services"],
+  center:     ["gauges", "pills", "chat", "services"],
   hidden:     [],
 };
 
@@ -513,6 +514,7 @@ const CENTER_DEFS = [
   { id: "gauges",   label: "Host Gauges" },
   { id: "pills",    label: "Status Pills" },
   { id: "services", label: "Suche & Services" },
+  { id: "chat",     label: "AI Chat" },
 ];
 
 function loadLayout() {
@@ -902,6 +904,11 @@ export default function Dashboard() {
                   )}
                 </div>
               );
+            }
+
+            if (wid === "chat") {
+              const aiConns = (data?.connectors ?? []).filter(c => c.type === "ai_models");
+              content = <AiChatWidget connectors={aiConns} />;
             }
 
             // Skip invisible widgets outside edit mode

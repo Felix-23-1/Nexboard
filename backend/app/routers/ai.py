@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
+import httpx
 
 from ..auth import get_current_user
 from ..database import get_db
@@ -24,6 +25,19 @@ class LogAnalyzeRequest(BaseModel):
 class ChatRequest(BaseModel):
     question: str
     infra_context: str | None = None
+
+
+class ConnectorChatMessage(BaseModel):
+    role: str   # "user" | "assistant" | "system"
+    content: str
+
+
+class ConnectorChatRequest(BaseModel):
+    connector_id: int
+    messages: list[ConnectorChatMessage]
+    model: str | None = None
+    max_tokens: int = 2048
+    temperature: float = 0.7
 
 
 async def _get_ai_config(db: AsyncSession, user_id: int) -> dict:
@@ -97,6 +111,113 @@ async def analyze_log_text(
                 "actions": analysis.actions, "severity": analysis.severity}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Log-Analyse fehlgeschlagen: {e}")
+
+
+@router.post("/connector-chat")
+async def connector_chat(
+    req: ConnectorChatRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Proxied Chat direkt an einen ai_models-Connector (OpenRouter, OpenAI, Ollama, …)."""
+
+    connector = await db.get(ConnectorConfig, req.connector_id)
+    if not connector or connector.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Connector nicht gefunden")
+    if connector.type != "ai_models":
+        raise HTTPException(status_code=400, detail="Nur AI-Modell-Connectors unterstützen Chat")
+
+    config      = connector.config or {}
+    base_url    = config.get("base_url", "").rstrip("/")
+    api_key     = config.get("api_key") or None
+    server_type = config.get("server_type", "auto").lower()
+
+    if not base_url:
+        raise HTTPException(status_code=400, detail="Connector hat keine Server-URL konfiguriert")
+
+    headers: dict[str, str] = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    async with httpx.AsyncClient(
+        headers=headers,
+        timeout=120,
+        verify=False,
+        follow_redirects=True,
+    ) as client:
+
+        # ── Detect Ollama ──────────────────────────────────────────────────────
+        is_ollama = server_type == "ollama"
+        if server_type == "auto":
+            try:
+                r = await client.get(f"{base_url}/api/tags", timeout=5)
+                if r.status_code == 200 and "models" in r.json():
+                    is_ollama = True
+            except Exception:
+                pass
+
+        try:
+            # ── Ollama ─────────────────────────────────────────────────────────
+            if is_ollama:
+                model = req.model or "llama3"
+                payload = {
+                    "model": model,
+                    "messages": [{"role": m.role, "content": m.content} for m in req.messages],
+                    "stream": False,
+                    "options": {"temperature": req.temperature},
+                }
+                r = await client.post(f"{base_url}/api/chat", json=payload)
+                r.raise_for_status()
+                data = r.json()
+                return {
+                    "content": data.get("message", {}).get("content", ""),
+                    "model":   data.get("model"),
+                    "usage":   {
+                        "prompt_tokens":     data.get("prompt_eval_count"),
+                        "completion_tokens": data.get("eval_count"),
+                    },
+                }
+
+            # ── OpenAI-compatible (OpenRouter, OpenAI, vLLM, llama.cpp) ────────
+            else:
+                model = req.model
+                # Auto-pick first model if none given
+                if not model:
+                    try:
+                        r = await client.get(f"{base_url}/models", timeout=5)
+                        if r.status_code == 200:
+                            items = r.json().get("data", [])
+                            if items:
+                                model = items[0].get("id")
+                    except Exception:
+                        pass
+                if not model:
+                    model = "gpt-4o-mini"  # last-resort fallback
+
+                payload = {
+                    "model":       model,
+                    "messages":    [{"role": m.role, "content": m.content} for m in req.messages],
+                    "max_tokens":  req.max_tokens,
+                    "temperature": req.temperature,
+                }
+                r = await client.post(f"{base_url}/chat/completions", json=payload)
+                r.raise_for_status()
+                data = r.json()
+                return {
+                    "content": data["choices"][0]["message"]["content"],
+                    "model":   data.get("model"),
+                    "usage":   data.get("usage"),
+                }
+
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(
+                status_code=502,
+                detail=f"AI-Server Fehler: HTTP {e.response.status_code} — {e.response.text[:300]}",
+            )
+        except httpx.TimeoutException:
+            raise HTTPException(status_code=504, detail="AI-Server Timeout (>120s)")
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Verbindungsfehler: {str(e)[:200]}")
 
 
 @router.post("/chat")

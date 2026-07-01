@@ -79,6 +79,11 @@ export const api = {
       request("/ai/analyze-logs", { method: "POST", body: JSON.stringify({ logs, context }) }),
     chat: (question, infra_context = null) =>
       request("/ai/chat", { method: "POST", body: JSON.stringify({ question, infra_context }) }),
+    connectorChat: (connector_id, messages, model = null, max_tokens = 2048, temperature = 0.7) =>
+      request("/ai/connector-chat", {
+        method: "POST",
+        body: JSON.stringify({ connector_id, messages, model, max_tokens, temperature }),
+      }),
   },
   proxmox: {
     vmAction: (connector_id, node, vmid, action) =>
