@@ -15,8 +15,9 @@ router = APIRouter(prefix="/status", tags=["status"], dependencies=[Depends(get_
 # Speichert das letzte Ergebnis pro (user_id, endpoint) damit das Dashboard
 # sofort antwortet und der teure Fetch im Hintergrund läuft.
 _cache: dict[str, dict] = {}          # key → {"data": ..., "fetched_at": datetime}
-_CACHE_TTL   = 25   # Sekunden – etwas kürzer als das 30s-Frontend-Interval
-_FETCH_TIMEOUT = 8  # Sekunden – harter Timeout pro Connector-Fetch
+_CACHE_TTL        = 60   # Sekunden – Cache-Lebensdauer
+_FETCH_TIMEOUT    = 8    # Sekunden – Timeout für overview (schnelle Connectors)
+_FETCH_TIMEOUT_DETAILED = 25  # Sekunden – Timeout für detailed (linux_probe etc.)
 
 # ── Helferfunktionen ───────────────────────────────────────────────────────────
 
@@ -231,7 +232,7 @@ async def get_detailed(
         if not cls:
             return {**base, "status": "unknown", "metrics": {}, "error": f"Typ '{connector.type}' nicht verfügbar"}
         try:
-            fetch_result = await _fetch_with_timeout(cls, connector.config, _FETCH_TIMEOUT)
+            fetch_result = await _fetch_with_timeout(cls, connector.config, _FETCH_TIMEOUT_DETAILED)
             return {**base, "status": fetch_result.status.value,
                     "metrics": fetch_result.metrics, "error": fetch_result.error}
         except Exception as e:

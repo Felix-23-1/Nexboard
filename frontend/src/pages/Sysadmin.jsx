@@ -389,11 +389,11 @@ function HostDetailPane({ connector: c, allConnectors, aiResult, aiLoading: aiLo
   const m  = c.metrics ?? {};
 
   // Gauge sublabels
-  const memLabel  = m.mem_used_mb && m.mem_total_mb
-    ? `${(m.mem_used_mb / 1024).toFixed(1)} / ${(m.mem_total_mb / 1024).toFixed(1)} GB`
+  const memLabel  = m.mem_used != null && m.mem_total
+    ? `${(m.mem_used / 1e9).toFixed(1)} / ${(m.mem_total / 1e9).toFixed(1)} GB`
     : undefined;
-  const diskLabel = m.disk_used_gb && m.disk_total_gb
-    ? `${Math.round(m.disk_used_gb)} / ${Math.round(m.disk_total_gb)} GB`
+  const diskLabel = m.disk_used != null && m.disk_total
+    ? `${(m.disk_used / 1e9).toFixed(0)} / ${(m.disk_total / 1e9).toFixed(0)} GB`
     : undefined;
   const cpuLabel  = m.cpu_cores ? `${m.cpu_cores} cores` : undefined;
 
@@ -427,19 +427,19 @@ function HostDetailPane({ connector: c, allConnectors, aiResult, aiLoading: aiLo
             display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center",
           }}>
             {m.os && <span>{m.os}</span>}
-            {m.uptime && <span style={{ opacity: 0.7 }}>· {m.uptime}</span>}
+            {m.uptime_s != null && <span style={{ opacity: 0.7 }}>· {m.uptime_h != null ? `${m.uptime_h}h` : `${Math.round(m.uptime_s / 3600)}h`} uptime</span>}
             {m.kernel && <span style={{ fontFamily: "monospace", opacity: 0.55 }}>· {m.kernel}</span>}
           </div>
         </div>
 
         {/* Temp */}
-        {m.cpu_temp && (
+        {m.temp_c != null && (
           <div style={{ textAlign: "center", flexShrink: 0 }}>
             <div style={{
               fontSize: 22, fontWeight: 700, lineHeight: 1,
-              color: m.cpu_temp > 80 ? "#f87171" : m.cpu_temp > 65 ? "#fbbf24" : "#34d399",
+              color: m.temp_c > 80 ? "#f87171" : m.temp_c > 65 ? "#fbbf24" : "#34d399",
             }}>
-              {Math.round(m.cpu_temp)}°C
+              {Math.round(m.temp_c)}°C
             </div>
             <div style={{ fontSize: 9, color: "rgba(255,255,255,0.28)", marginTop: 2 }}>CPU Temp</div>
           </div>

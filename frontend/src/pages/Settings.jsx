@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { Eye, EyeOff, Save } from "lucide-react";
+import { Eye, EyeOff, Save, Check } from "lucide-react";
 import { api } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
+import { BG_PRESETS, loadBgConfig, saveBgConfig, applyBackground } from "../hooks/useBackground";
 
 const PROVIDERS = [
   { value: "openai",    label: "OpenAI",              placeholder: "sk-..." },
@@ -13,9 +15,10 @@ const DEFAULT_MODELS = {
   ollama:    "llama3.2",
 };
 
-const TABS = ["Allgemein", "KI-Analyse", "Benachrichtigungen", "Erweitert"];
+const TABS = ["Allgemein", "KI-Analyse", "Benachrichtigungen", "Erweitert", "Personalisierung"];
 
 export default function Settings() {
+  const { user } = useAuth();
   const [form, setForm]     = useState({
     ai_provider: "openai", ai_api_key: "", ai_model: "", ai_ollama_url: "http://localhost:11434",
   });
@@ -24,6 +27,16 @@ export default function Settings() {
   const [saved, setSaved]       = useState(false);
   const [loading, setLoading]   = useState(true);
   const [activeTab, setActiveTab] = useState(0);
+
+  // Personalization / background
+  const [bgConfig, setBgConfig] = useState(() => loadBgConfig(user?.username));
+  const [imageUrl, setImageUrl] = useState(bgConfig.type === "image" ? bgConfig.url ?? "" : "");
+
+  function updateBg(newConfig) {
+    setBgConfig(newConfig);
+    saveBgConfig(user?.username, newConfig);
+    applyBackground(newConfig);
+  }
 
   useEffect(() => {
     api.settings.get().then((data) => { setForm(data); setLoading(false); });
@@ -224,6 +237,92 @@ export default function Settings() {
                   </SettingsGrid>
                 </SettingsSection>
               </div>
+            </div>
+          )}
+
+          {/* Tab 4 – Personalisierung */}
+          {activeTab === 4 && (
+            <div style={{ maxWidth: 560 }}>
+              <SettingsSection title="Hintergrund">
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginBottom: 20, lineHeight: 1.55 }}>
+                  Jeder Nutzer kann seinen eigenen Hintergrund wählen — die Einstellung wird lokal in deinem Browser gespeichert.
+                </p>
+
+                {/* Gradient presets */}
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 12 }}>
+                  Gradient-Presets
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 24 }}>
+                  {BG_PRESETS.map(preset => {
+                    const active = bgConfig.type !== "image" && bgConfig.preset === preset.id;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => updateBg({ type: "preset", preset: preset.id })}
+                        style={{
+                          border: `2px solid ${active ? "rgba(245,158,11,0.7)" : "rgba(255,255,255,0.08)"}`,
+                          borderRadius: 12, overflow: "hidden", cursor: "pointer",
+                          background: "transparent", padding: 0, position: "relative",
+                          transition: "border-color 0.15s",
+                        }}
+                      >
+                        <div style={{ height: 64, background: preset.preview, backgroundSize: "cover" }} />
+                        <div style={{
+                          padding: "7px 10px",
+                          background: "rgba(0,0,0,0.4)",
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                        }}>
+                          <span style={{ fontSize: 11, color: active ? "#F59E0B" : "rgba(255,255,255,0.55)", fontWeight: active ? 600 : 400 }}>
+                            {preset.label}
+                          </span>
+                          {active && <Check size={12} style={{ color: "#F59E0B", flexShrink: 0 }} />}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Custom image URL */}
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 10 }}>
+                  Eigenes Hintergrundbild (URL)
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    className="nb-input"
+                    type="url"
+                    placeholder="https://… (direkte Bild-URL, z.B. Unsplash, Pexels)"
+                    value={imageUrl}
+                    onChange={e => setImageUrl(e.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={!imageUrl.trim()}
+                    onClick={() => updateBg({ type: "image", url: imageUrl.trim() })}
+                    style={{ fontSize: 12.5, padding: "8px 16px", flexShrink: 0 }}
+                  >
+                    Anwenden
+                  </button>
+                </div>
+                {bgConfig.type === "image" && (
+                  <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Aktives Bild: <span style={{ color: "rgba(255,255,255,0.55)", fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>{bgConfig.url}</span></span>
+                    <button
+                      type="button"
+                      onClick={() => { updateBg({ type: "preset", preset: "amber" }); setImageUrl(""); }}
+                      style={{ fontSize: 10, color: "#f87171", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
+                    >
+                      Zurücksetzen
+                    </button>
+                  </div>
+                )}
+
+                <p style={{ fontSize: 10.5, color: "rgba(255,255,255,0.2)", marginTop: 12, lineHeight: 1.5 }}>
+                  Tipp: Unsplash direct-links funktionieren gut — rechtsklick auf ein Bild → "Bild-URL kopieren". Das Bild wird mit einem dunklen Overlay versehen damit der Text lesbar bleibt.
+                </p>
+              </SettingsSection>
             </div>
           )}
 

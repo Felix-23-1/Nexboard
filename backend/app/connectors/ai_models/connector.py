@@ -69,11 +69,11 @@ class AIModelsConnector(BaseConnector):
 
             # Auto-detect: zuerst Ollama versuchen, dann OpenAI-kompatibel
             if server_type == "auto":
-                server_type = await _detect_server_type(client)
+                server_type, detect_error = await _detect_server_type(client, base_url)
                 if server_type is None:
                     return ConnectorResult(
                         status=ConnectorStatus.OFFLINE,
-                        error="Server nicht erreichbar oder Typ nicht erkannt",
+                        error=detect_error or "Server nicht erreichbar oder Typ nicht erkannt",
                     )
 
             try:
@@ -99,25 +99,32 @@ def _AIModelsConnector_timeout(self) -> int:
 
 # ─── Auto-Detect ──────────────────────────────────────────────────────────────
 
-async def _detect_server_type(client: httpx.AsyncClient) -> str | None:
-    """Probiert Ollama-Endpunkt, dann OpenAI-Compat. Gibt Typ zurück oder None."""
+async def _detect_server_type(client: httpx.AsyncClient, base_url: str) -> tuple[str | None, str | None]:
+    """Probiert Ollama-Endpunkt, dann OpenAI-Compat. Gibt (Typ, Fehlermeldung) zurück."""
+    last_error: str | None = None
+
     # Ollama hat /api/tags (GET → JSON mit models-Array)
     try:
-        r = await client.get("/api/tags", timeout=6)
+        r = await client.get("/api/tags", timeout=8)
         if r.status_code == 200 and "models" in r.json():
-            return "ollama"
+            return "ollama", None
     except Exception:
         pass
 
     # OpenAI-kompatibel hat /v1/models
     try:
-        r = await client.get("/v1/models", timeout=6)
-        if r.status_code in (200, 401):
-            return "openai"
-    except Exception:
-        pass
+        r = await client.get("/v1/models", timeout=8)
+        if r.status_code in (200, 401, 403):
+            return "openai", None
+        last_error = f"Unerwarteter HTTP-Status {r.status_code} von {base_url}/v1/models"
+    except httpx.ConnectError:
+        last_error = f"Verbindung zu {base_url} abgelehnt — Server erreichbar?"
+    except httpx.TimeoutException:
+        last_error = f"Timeout beim Verbinden mit {base_url} — Server zu langsam oder nicht erreichbar. Tipp: Server-Typ manuell auf 'openai' setzen."
+    except Exception as e:
+        last_error = f"Fehler bei Auto-Erkennung: {e}"
 
-    return None
+    return None, last_error
 
 
 # ─── Ollama ───────────────────────────────────────────────────────────────────
