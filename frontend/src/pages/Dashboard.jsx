@@ -1,9 +1,9 @@
 /**
- * Dashboard – Homepage-inspired redesign
- * Clock-Hero · Stat-Pills · Service-Gruppen mit farbigen Tiles
+ * Dashboard – Clock-Hero · Stat-Pills · Service-Gruppen · EventFeed
+ * Two-column layout: service grid left, fleet event feed right.
  */
 import { useEffect, useState } from "react";
-import { RefreshCw, Plug, Search } from "lucide-react";
+import { RefreshCw, Plug, Search, AlertTriangle, CheckCircle, X, HardDrive, Lock } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import ConnectorIcon from "../components/ConnectorIcon";
@@ -80,11 +80,7 @@ function getMetrics(type, m) {
       ...(m.gpu?.available ? [kv("VRAM", `${Math.round((m.gpu.total_vram_used_mb ?? 0) / 1024 * 10) / 10}GB`)] : []),
       ...(m.systemd?.failed_count > 0 ? [kv("Failed", m.systemd.failed_count)] : []),
     ];
-    case "ai_models":      return [
-      kv("Geladen", m.models_loaded_count ?? 0),
-      kv("Verfügbar", m.models_available ?? 0),
-      kv("Server", m.server_type ?? "–"),
-    ];
+    case "ai_models":      return [kv("Geladen", m.models_loaded_count ?? 0), kv("Verfügbar", m.models_available ?? 0), kv("Server", m.server_type ?? "–")];
     case "bookmarks":      return [kv("Links", m.link_count ?? 0)];
     case "netcup":         return [kv("Server", `${m.servers_running ?? 0}/${m.servers_total ?? 0}`)];
     case "wol":            return [kv("Status", m.online ? "Online" : "Offline"), kv("Host", m.host ?? "–")];
@@ -130,7 +126,7 @@ function ServiceTile({ connector: c }) {
         transition: "background 0.18s, border-color 0.18s, box-shadow 0.18s",
       }}
       onMouseEnter={e => {
-        e.currentTarget.style.background  = `rgba(255,255,255,0.075)`;
+        e.currentTarget.style.background  = "rgba(255,255,255,0.075)";
         e.currentTarget.style.borderColor = `${cfg.color}40`;
         e.currentTarget.style.boxShadow   = `0 8px 32px rgba(0,0,0,0.30), 0 0 20px ${cfg.color}12, inset 0 1px 0 rgba(255,255,255,0.10)`;
       }}
@@ -140,76 +136,43 @@ function ServiceTile({ connector: c }) {
         e.currentTarget.style.boxShadow   = "0 4px 20px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.07)";
       }}
     >
-      {/* Header: icon + name + status */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-        {/* Colored icon */}
         <div style={{
           width: 42, height: 42, borderRadius: 11, flexShrink: 0,
           background: `${cfg.color}1C`, border: `1px solid ${cfg.color}38`,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          color: cfg.color,
+          display: "flex", alignItems: "center", justifyContent: "center", color: cfg.color,
         }}>
           <ConnectorIcon icon={cfg.icon} size={20} />
         </div>
-
-        {/* Name + type */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{
-            fontSize: 13.5, fontWeight: 600, color: "var(--text-1)",
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {c.name}
           </div>
-          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
-            {cfg.label}
-          </div>
+          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>{cfg.label}</div>
         </div>
-
-        {/* Status badge */}
         <div style={{
           display: "flex", alignItems: "center", gap: 4,
           padding: "3px 9px", borderRadius: 20, flexShrink: 0,
           background: `${dotColor}14`, border: `1px solid ${dotColor}28`,
           fontSize: 10.5, fontWeight: 500, color: dotColor,
         }}>
-          <span style={{
-            width: 5, height: 5, borderRadius: "50%",
-            display: "inline-block", background: dotColor,
-          }} />
+          <span style={{ width: 5, height: 5, borderRadius: "50%", display: "inline-block", background: dotColor }} />
           {statusLabel}
         </div>
       </div>
 
-      {/* Error message */}
       {c.error && (
-        <div style={{
-          fontSize: 11, color: "#f87171",
-          background: "rgba(248,113,113,0.07)",
-          border: "1px solid rgba(248,113,113,0.14)",
-          borderRadius: 8, padding: "5px 10px",
-        }}>
+        <div style={{ fontSize: 11, color: "#f87171", background: "rgba(248,113,113,0.07)", border: "1px solid rgba(248,113,113,0.14)", borderRadius: 8, padding: "5px 10px" }}>
           {c.error}
         </div>
       )}
 
-      {/* Metrics */}
       {metrics.length > 0 && (
-        <div style={{
-          display: "flex", gap: 20, flexWrap: "wrap",
-          paddingTop: 10,
-          borderTop: "1px solid rgba(255,255,255,0.055)",
-        }}>
+        <div style={{ display: "flex", gap: 20, flexWrap: "wrap", paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.055)" }}>
           {metrics.map(({ label, value }) => (
             <div key={label}>
-              <div style={{
-                fontSize: 15, fontWeight: 700, color: "var(--text-1)",
-                lineHeight: 1, fontVariantNumeric: "tabular-nums",
-              }}>
-                {value}
-              </div>
-              <div style={{ fontSize: 10, color: "var(--text-3)", marginTop: 3 }}>
-                {label}
-              </div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-1)", lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{value}</div>
+              <div style={{ fontSize: 10, color: "var(--text-3)", marginTop: 3 }}>{label}</div>
             </div>
           ))}
         </div>
@@ -233,13 +196,8 @@ function BookmarkGroupTile({ connector: c }) {
       display: "flex", flexDirection: "column", gap: 12,
       gridColumn: links.length >= 4 ? "1 / -1" : undefined,
     }}>
-      {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{
-          width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-          background: `${cfg.color}1C`, border: `1px solid ${cfg.color}38`,
-          display: "flex", alignItems: "center", justifyContent: "center", color: cfg.color,
-        }}>
+        <div style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: `${cfg.color}1C`, border: `1px solid ${cfg.color}38`, display: "flex", alignItems: "center", justifyContent: "center", color: cfg.color }}>
           <ConnectorIcon icon="bookmark" size={16} />
         </div>
         <div>
@@ -247,20 +205,10 @@ function BookmarkGroupTile({ connector: c }) {
           {c.metrics?.description && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{c.metrics.description}</div>}
         </div>
       </div>
-      {/* Link grid */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 6 }}>
         {links.map((link, i) => (
-          <a
-            key={i}
-            href={link.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: "flex", alignItems: "center", gap: 7, padding: "7px 10px",
-              background: "rgba(255,255,255,0.05)", borderRadius: 9,
-              border: "1px solid rgba(255,255,255,0.08)", textDecoration: "none",
-              transition: "all 0.15s", color: "rgba(255,255,255,0.75)", fontSize: 12.5,
-            }}
+          <a key={i} href={link.url} target="_blank" rel="noopener noreferrer"
+            style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 10px", background: "rgba(255,255,255,0.05)", borderRadius: 9, border: "1px solid rgba(255,255,255,0.08)", textDecoration: "none", transition: "all 0.15s", color: "rgba(255,255,255,0.75)", fontSize: 12.5 }}
             title={link.description || link.url}
             onMouseEnter={e => { e.currentTarget.style.background = "rgba(245,158,11,0.10)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.28)"; }}
             onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; }}
@@ -269,9 +217,128 @@ function BookmarkGroupTile({ connector: c }) {
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{link.name}</span>
           </a>
         ))}
-        {links.length === 0 && (
-          <span style={{ fontSize: 11.5, color: "var(--text-3)", gridColumn: "1 / -1" }}>Keine Links konfiguriert.</span>
+        {links.length === 0 && <span style={{ fontSize: 11.5, color: "var(--text-3)", gridColumn: "1 / -1" }}>Keine Links konfiguriert.</span>}
+      </div>
+    </div>
+  );
+}
+
+/* ── Event Feed ──────────────────────────────────────────────── */
+function buildEvents(connectors) {
+  const events = [];
+  const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+
+  for (const c of connectors) {
+    const m = c.metrics ?? {};
+
+    if (["offline", "error", "critical"].includes(c.status)) {
+      events.push({ id: `offline-${c.id}`, sev: "error",   title: `${c.name} nicht erreichbar`,         body: c.error?.slice(0, 60) || "Verbindung fehlgeschlagen",       icon: "x",        color: "#f87171", ts });
+    }
+    if (c.status === "warning") {
+      events.push({ id: `warn-${c.id}`,    sev: "warning", title: `${c.name}: Warnung`,                  body: c.error?.slice(0, 60) || "Connector meldet Warnung",         icon: "triangle", color: "#fbbf24", ts });
+    }
+    if (c.type === "docker" && (m.unhealthy ?? 0) > 0) {
+      events.push({ id: `docker-${c.id}`,  sev: "warning", title: `${c.name}: ${m.unhealthy} ungesund`,  body: "Docker Health-Check fehlgeschlagen",                         icon: "triangle", color: "#fbbf24", ts });
+    }
+    if ((c.type === "linux_probe" || c.type === "linux_ssh") && (m.disk_pct ?? 0) > 88) {
+      events.push({ id: `disk-${c.id}`,    sev: "warning", title: `${c.name}: Disk ${Math.round(m.disk_pct)}%`, body: "Disk-Auslastung kritisch hoch",                  icon: "hdd",      color: "#fbbf24", ts });
+    }
+    if ((c.type === "linux_probe" || c.type === "linux_ssh") && (m.systemd?.failed_count ?? 0) > 0) {
+      events.push({ id: `svc-${c.id}`,     sev: "warning", title: `${c.name}: ${m.systemd.failed_count} Service(s) failed`, body: (m.systemd.failed_units || []).slice(0, 2).join(", ") || "systemd fehlgeschlagen", icon: "triangle", color: "#fbbf24", ts });
+    }
+    if (c.type === "tls_monitor" && !["offline","error","critical"].includes(c.status)) {
+      const days = m.days_until_expiry ?? 999;
+      if (days < 14) events.push({ id: `tls-${c.id}`, sev: days < 3 ? "error" : "warning", title: `TLS: ${m.host ?? c.name}`, body: `Läuft in ${days} Tag${days === 1 ? "" : "en"} ab`, icon: "lock", color: days < 3 ? "#f87171" : "#fbbf24", ts });
+    }
+    if (c.type === "uptime_kuma" && (m.down ?? 0) > 0) {
+      events.push({ id: `kuma-${c.id}`,    sev: "error",   title: `${c.name}: ${m.down} Monitor down`,   body: "Uptime Kuma meldet Ausfälle",                               icon: "x",        color: "#f87171", ts });
+    }
+  }
+
+  if (events.length === 0 && connectors.length > 0) {
+    const online     = connectors.filter(c => c.status === "online").length;
+    const containers = connectors.filter(c => c.type === "docker").reduce((s, c) => s + (c.metrics?.running ?? 0), 0);
+    const vms        = connectors.filter(c => c.type === "proxmox").reduce((s, c) => s + (c.metrics?.vms_running ?? 0), 0);
+    events.push({ id: "clear",    sev: "ok", title: "Fleet in guter Verfassung",      body: `${online} von ${connectors.length} Connectors online`, icon: "check", color: "#34d399", ts });
+    if (containers > 0) events.push({ id: "cont-ok", sev: "ok", title: `${containers} Container aktiv`,        body: "Alle Docker-Container gesund",              icon: "check", color: "#34d399", ts });
+    if (vms > 0)        events.push({ id: "vm-ok",   sev: "ok", title: `${vms} VM${vms > 1 ? "s" : ""} laufen`, body: "Proxmox-Virtualisierung aktiv",            icon: "check", color: "#34d399", ts });
+  }
+
+  return events;
+}
+
+function EventFeed({ connectors }) {
+  const events      = buildEvents(connectors);
+  const hasErrors   = events.some(e => e.sev === "error");
+  const hasWarnings = events.some(e => e.sev === "warning");
+  const headerColor = hasErrors ? "#f87171" : hasWarnings ? "#fbbf24" : "#34d399";
+
+  function EvIcon({ icon }) {
+    if (icon === "x")     return <X size={11} />;
+    if (icon === "check") return <CheckCircle size={11} />;
+    if (icon === "hdd")   return <HardDrive size={11} />;
+    if (icon === "lock")  return <Lock size={11} />;
+    return <AlertTriangle size={11} />;
+  }
+
+  return (
+    <div style={{
+      width: 282,
+      flexShrink: 0,
+      background: "rgba(255,255,255,0.032)",
+      border: "1px solid rgba(255,255,255,0.07)",
+      borderRadius: 16,
+      overflow: "hidden",
+      display: "flex",
+      flexDirection: "column",
+      alignSelf: "flex-start",
+      position: "sticky",
+      top: 0,
+    }}>
+      {/* Header */}
+      <div style={{ padding: "11px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: headerColor, boxShadow: `0 0 6px ${headerColor}`, display: "inline-block", flexShrink: 0 }} />
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", flex: 1 }}>
+          Fleet Events
+        </span>
+        <span style={{
+          background: hasErrors ? "rgba(248,113,113,0.12)" : "rgba(255,255,255,0.05)",
+          border: `1px solid ${hasErrors ? "rgba(248,113,113,0.25)" : "rgba(255,255,255,0.08)"}`,
+          borderRadius: 10, padding: "1px 7px",
+          fontSize: 9.5, fontWeight: 700,
+          color: hasErrors ? "#f87171" : "rgba(255,255,255,0.25)",
+        }}>
+          {events.length}
+        </span>
+      </div>
+
+      {/* Event list */}
+      <div style={{ overflowY: "auto", maxHeight: "calc(100vh - 200px)" }}>
+        {events.length === 0 && connectors.length === 0 && (
+          <div style={{ padding: "24px 16px", textAlign: "center", color: "rgba(255,255,255,0.2)", fontSize: 11.5 }}>
+            Keine Daten geladen
+          </div>
         )}
+        {events.map((ev, i) => (
+          <div key={ev.id} style={{
+            padding: "10px 16px",
+            borderBottom: i < events.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none",
+            display: "flex", gap: 10, alignItems: "flex-start",
+          }}>
+            <div style={{
+              width: 22, height: 22, borderRadius: "50%", flexShrink: 0, marginTop: 1,
+              background: `${ev.color}16`, border: `1px solid ${ev.color}28`,
+              display: "flex", alignItems: "center", justifyContent: "center", color: ev.color,
+            }}>
+              <EvIcon icon={ev.icon} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.82)", lineHeight: 1.25 }}>{ev.title}</div>
+              <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.32)", marginTop: 2.5, lineHeight: 1.3 }}>{ev.body}</div>
+              <div style={{ fontSize: 9.5, color: "rgba(255,255,255,0.18)", marginTop: 3 }}>{ev.ts} Uhr</div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -308,7 +375,6 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ── Stats ──────────────────────────────────────────────────── */
   function calcStats() {
     const all = data?.connectors ?? [];
     return {
@@ -323,15 +389,11 @@ export default function Dashboard() {
     };
   }
 
-  /* ── Grouped + filtered connectors ──────────────────────────── */
   function getGroups() {
     const all = data?.connectors ?? [];
     const q   = search.toLowerCase().trim();
     const filtered = q
-      ? all.filter(c =>
-          c.name.toLowerCase().includes(q) ||
-          (TYPE_CFG[c.type]?.label ?? c.type).toLowerCase().includes(q)
-        )
+      ? all.filter(c => c.name.toLowerCase().includes(q) || (TYPE_CFG[c.type]?.label ?? c.type).toLowerCase().includes(q))
       : all;
 
     const map = {};
@@ -345,7 +407,6 @@ export default function Dashboard() {
     for (const name of GROUP_ORDER) {
       if (map[name]) result.push({ name, connectors: map[name] });
     }
-    // unknown groups at end
     for (const [name, connectors] of Object.entries(map)) {
       if (!GROUP_ORDER.includes(name)) result.push({ name, connectors });
     }
@@ -364,174 +425,120 @@ export default function Dashboard() {
       <div style={{ textAlign: "center" }}>
         <p style={{ color: "#f87171", fontSize: 13, marginBottom: 8 }}>Backend nicht erreichbar</p>
         <p style={{ color: "var(--text-3)", fontSize: 11 }}>{error}</p>
-        <button onClick={() => load()} className="btn-primary" style={{ marginTop: 16 }}>
-          Erneut versuchen
-        </button>
+        <button onClick={() => load()} className="btn-primary" style={{ marginTop: 16 }}>Erneut versuchen</button>
       </div>
     </div>
   );
 
-  const stats  = calcStats();
-  const groups = getGroups();
-  const overall = stats.offline > 0 ? "offline" : stats.warning > 0 ? "warning" : "online";
-
+  const stats        = calcStats();
+  const groups       = getGroups();
+  const overall      = stats.offline > 0 ? "offline" : stats.warning > 0 ? "warning" : "online";
   const overallColor = overall === "online" ? "#34d399" : overall === "warning" ? "#fbbf24" : "#f87171";
   const overallText  = overall === "online" ? "Alles in Ordnung" : overall === "warning" ? "Warnung aktiv" : "System kritisch";
-
-  const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-  const secStr  = pad(now.getSeconds());
-  const dateStr = `${DAYS[now.getDay()]}, ${now.getDate()}. ${MONTHS[now.getMonth()]} ${now.getFullYear()}`;
+  const timeStr      = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const secStr       = pad(now.getSeconds());
+  const dateStr      = `${DAYS[now.getDay()]}, ${now.getDate()}. ${MONTHS[now.getMonth()]} ${now.getFullYear()}`;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%", padding: "28px 32px", gap: 28 }}>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%", padding: "28px 32px", gap: 24 }}>
 
-      {/* ── Hero: Clock + Status ──────────────────────────────── */}
+      {/* ── Hero: Clock + Status – full width ─────────────────── */}
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
-        {/* Clock */}
         <div>
           <div style={{ display: "flex", alignItems: "baseline" }}>
-            <span style={{
-              fontSize: 60, fontWeight: 700, color: "var(--text-1)",
-              lineHeight: 1, letterSpacing: "-0.04em", fontVariantNumeric: "tabular-nums",
-            }}>
+            <span style={{ fontSize: 60, fontWeight: 700, color: "var(--text-1)", lineHeight: 1, letterSpacing: "-0.04em", fontVariantNumeric: "tabular-nums" }}>
               {timeStr}
             </span>
-            <span style={{
-              fontSize: 24, fontWeight: 300, color: "var(--text-3)",
-              letterSpacing: "-0.02em", marginLeft: 5,
-            }}>
+            <span style={{ fontSize: 24, fontWeight: 300, color: "var(--text-3)", letterSpacing: "-0.02em", marginLeft: 5 }}>
               :{secStr}
             </span>
           </div>
-          <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 6, letterSpacing: "0.01em" }}>
-            {dateStr}
-          </div>
+          <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 6, letterSpacing: "0.01em" }}>{dateStr}</div>
         </div>
 
-        {/* Status + Refresh */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{
-            display: "flex", alignItems: "center", gap: 6,
-            padding: "7px 16px", borderRadius: 20,
-            background: `${overallColor}14`, border: `1px solid ${overallColor}2A`,
-            fontSize: 12.5, fontWeight: 500, color: overallColor,
-          }}>
-            <span style={{
-              width: 6, height: 6, borderRadius: "50%",
-              display: "inline-block", background: overallColor,
-              boxShadow: `0 0 8px ${overallColor}`,
-            }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 16px", borderRadius: 20, background: `${overallColor}14`, border: `1px solid ${overallColor}2A`, fontSize: 12.5, fontWeight: 500, color: overallColor }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", display: "inline-block", background: overallColor, boxShadow: `0 0 8px ${overallColor}` }} />
             {overallText}
           </div>
-          <button
-            onClick={() => load(true)}
-            disabled={refreshing}
-            className="btn-ghost"
-            style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, padding: "7px 14px" }}
-          >
+          <button onClick={() => load(true)} disabled={refreshing} className="btn-ghost" style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, padding: "7px 14px" }}>
             <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />
             Aktualisieren
           </button>
         </div>
       </div>
 
-      {/* ── Stat pills ───────────────────────────────────────────── */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {[
-          { label: "Services",   value: stats.total,      color: "var(--text-2)" },
-          { label: "Online",     value: stats.online,     color: "#34d399" },
-          ...(stats.warning > 0 ? [{ label: "Warnung",   value: stats.warning,   color: "#fbbf24" }] : []),
-          ...(stats.offline > 0 ? [{ label: "Offline",   value: stats.offline,   color: "#f87171" }] : []),
-          ...(stats.hasProxmox  ? [{ label: "VMs",       value: stats.vmsRunning, color: "#FCD34D" }] : []),
-          ...(stats.hasDocker   ? [{ label: "Container", value: stats.containers, color: "#60a5fa" }] : []),
-        ].map(({ label, value, color }) => (
-          <div key={label} style={{
-            padding: "5px 14px", borderRadius: 20,
-            background: "rgba(255,255,255,0.05)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            display: "flex", alignItems: "center", gap: 7,
-          }}>
-            <span style={{ fontWeight: 700, color, fontSize: 14, fontVariantNumeric: "tabular-nums" }}>
-              {value}
-            </span>
-            <span style={{ color: "var(--text-3)", fontSize: 11 }}>{label}</span>
+      {/* ── Two-column main layout ──────────────────────────────── */}
+      <div style={{ display: "flex", gap: 24, alignItems: "flex-start", flex: 1 }}>
+
+        {/* Left: stat pills + search + groups */}
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 24 }}>
+
+          {/* Stat pills */}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {[
+              { label: "Services",   value: stats.total,       color: "var(--text-2)" },
+              { label: "Online",     value: stats.online,      color: "#34d399" },
+              ...(stats.warning > 0 ? [{ label: "Warnung",   value: stats.warning,   color: "#fbbf24" }] : []),
+              ...(stats.offline > 0 ? [{ label: "Offline",   value: stats.offline,   color: "#f87171" }] : []),
+              ...(stats.hasProxmox  ? [{ label: "VMs",       value: stats.vmsRunning, color: "#FCD34D" }] : []),
+              ...(stats.hasDocker   ? [{ label: "Container", value: stats.containers, color: "#60a5fa" }] : []),
+            ].map(({ label, value, color }) => (
+              <div key={label} style={{ padding: "5px 14px", borderRadius: 20, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", gap: 7 }}>
+                <span style={{ fontWeight: 700, color, fontSize: 14, fontVariantNumeric: "tabular-nums" }}>{value}</span>
+                <span style={{ color: "var(--text-3)", fontSize: 11 }}>{label}</span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      {/* ── Search ───────────────────────────────────────────────── */}
-      <div style={{ position: "relative", maxWidth: 380 }}>
-        <Search size={14} style={{
-          position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)",
-          color: "var(--text-3)", pointerEvents: "none",
-        }} />
-        <input
-          className="nb-input"
-          placeholder="Services filtern…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          style={{ paddingLeft: 34 }}
-        />
-      </div>
+          {/* Search */}
+          <div style={{ position: "relative", maxWidth: 380 }}>
+            <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-3)", pointerEvents: "none" }} />
+            <input className="nb-input" placeholder="Services filtern…" value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 34 }} />
+          </div>
 
-      {/* ── Service groups ───────────────────────────────────────── */}
-      {groups.length === 0 ? (
-        <div className="card" style={{ textAlign: "center", padding: "48px 20px" }}>
-          <Plug size={36} style={{ color: "rgba(255,255,255,0.12)", margin: "0 auto 12px" }} />
-          <p style={{ color: "var(--text-2)", fontSize: 13, marginBottom: 16 }}>
-            {search ? "Keine Services gefunden." : "Noch keine Connectors konfiguriert."}
-          </p>
-          {!search && (
-            <Link
-              to="/connectors"
-              className="btn-primary"
-              style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13 }}
-            >
-              <Plug size={13} /> Ersten Connector hinzufügen
-            </Link>
+          {/* Service groups */}
+          {groups.length === 0 ? (
+            <div className="card" style={{ textAlign: "center", padding: "48px 20px" }}>
+              <Plug size={36} style={{ color: "rgba(255,255,255,0.12)", margin: "0 auto 12px" }} />
+              <p style={{ color: "var(--text-2)", fontSize: 13, marginBottom: 16 }}>
+                {search ? "Keine Services gefunden." : "Noch keine Connectors konfiguriert."}
+              </p>
+              {!search && (
+                <Link to="/connectors" className="btn-primary" style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13 }}>
+                  <Plug size={13} /> Ersten Connector hinzufügen
+                </Link>
+              )}
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 32, paddingBottom: 32 }}>
+              {groups.map(({ name, connectors }) => (
+                <div key={name}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-3)" }}>
+                      {name}
+                    </span>
+                    <span style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "1px 7px", fontSize: 9.5, fontWeight: 600, color: "var(--text-3)" }}>
+                      {connectors.length}
+                    </span>
+                    <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.055)" }} />
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
+                    {connectors.map(c =>
+                      c.type === "bookmarks"
+                        ? <BookmarkGroupTile key={c.id} connector={c} />
+                        : <ServiceTile key={c.id} connector={c} />
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-          {groups.map(({ name, connectors }) => (
-            <div key={name}>
-              {/* Group header */}
-              <div style={{
-                display: "flex", alignItems: "center", gap: 8, marginBottom: 14,
-              }}>
-                <span style={{
-                  fontSize: 9.5, fontWeight: 700, letterSpacing: "0.14em",
-                  textTransform: "uppercase", color: "var(--text-3)",
-                }}>
-                  {name}
-                </span>
-                <span style={{
-                  background: "rgba(255,255,255,0.07)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  borderRadius: 10, padding: "1px 7px",
-                  fontSize: 9.5, fontWeight: 600, color: "var(--text-3)",
-                }}>
-                  {connectors.length}
-                </span>
-                <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.055)" }} />
-              </div>
 
-              {/* Tile grid */}
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-                gap: 12,
-              }}>
-                {connectors.map(c =>
-                  c.type === "bookmarks"
-                    ? <BookmarkGroupTile key={c.id} connector={c} />
-                    : <ServiceTile key={c.id} connector={c} />
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+        {/* Right: event feed */}
+        <EventFeed connectors={data?.connectors ?? []} />
+      </div>
     </div>
   );
 }

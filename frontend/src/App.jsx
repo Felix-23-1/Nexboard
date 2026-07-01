@@ -3,6 +3,9 @@ import { Activity } from "lucide-react";
 import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Sysadmin from "./pages/Sysadmin";
+import LabSystem from "./pages/LabSystem";
+import LabNetwork from "./pages/LabNetwork";
+import LabCosts from "./pages/LabCosts";
 import Connectors from "./pages/Connectors";
 import Settings from "./pages/Settings";
 import Users from "./pages/Users";
@@ -54,6 +57,9 @@ export default function App() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="sysadmin" element={<Sysadmin />} />
+        <Route path="system" element={<LabSystem />} />
+        <Route path="network" element={<LabNetwork />} />
+        <Route path="costs" element={<LabCosts />} />
         <Route path="connectors" element={<Connectors />} />
         <Route
           path="settings"
