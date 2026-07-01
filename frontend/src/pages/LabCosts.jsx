@@ -3,7 +3,10 @@
  * Zeigt ai_models Connector-Daten + manuelles Kosten-Tracking mit localStorage.
  */
 import { useEffect, useState, useRef } from "react";
-import { RefreshCw, DollarSign, Plus, Trash2, TrendingUp, Brain } from "lucide-react";
+import { RefreshCw, DollarSign, Plus, Trash2, TrendingUp, Brain, Zap, Globe } from "lucide-react";
+import {
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
+} from "recharts";
 import { api } from "../api/client";
 
 /* ── localStorage helpers ────────────────────────────────────── */
@@ -44,174 +47,224 @@ function CostBar({ entries }) {
   );
 }
 
-/* ── AI connector card ───────────────────────────────────────── */
-function AiConnectorCard({ connector: c }) {
-  const m   = c.metrics ?? {};
-  const SC  = { online: "#34d399", warning: "#fbbf24", offline: "#f87171", error: "#f87171", critical: "#f87171" };
-  const sc  = SC[c.status] ?? "rgba(255,255,255,0.25)";
+/* ── Provider config ─────────────────────────────────────────── */
+function providerMeta(usage, baseUrl) {
+  const url = (baseUrl ?? "").toLowerCase();
+  if (usage?.provider === "openrouter" || url.includes("openrouter"))
+    return { label: "OpenRouter", short: "OR", accent: "#8B5CF6", rgb: "139,92,246" };
+  if (usage?.provider === "openai" || url.includes("openai"))
+    return { label: "OpenAI", short: "OA", accent: "#10a37f", rgb: "16,163,127" };
+  return { label: "AI Server", short: "AI", accent: "#F59E0B", rgb: "245,158,11" };
+}
 
-  // Connector returns available_models (string[]) or models_loaded (string[])
-  const models = m.available_models ?? m.models_loaded ?? m.models ?? [];
-
+/* ── Custom tooltip ──────────────────────────────────────────── */
+function ChartTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  const val = payload[0]?.value;
   return (
     <div style={{
-      background: "rgba(139,92,246,0.06)",
-      border: "1px solid rgba(139,92,246,0.18)",
-      borderRadius: 14,
-      padding: "16px",
+      background: "rgba(10,12,20,0.92)", border: "1px solid rgba(255,255,255,0.10)",
+      borderRadius: 9, padding: "8px 12px", fontSize: 11,
     }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-        <div style={{ width: 40, height: 40, borderRadius: 11, background: "rgba(139,92,246,0.14)", border: "1px solid rgba(139,92,246,0.32)", display: "flex", alignItems: "center", justifyContent: "center", color: "#8B5CF6", flexShrink: 0 }}>
-          <Brain size={19} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-1)" }}>{c.name}</div>
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>
-            {m.server_type ?? m.backend ?? "AI Model Server"}
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 20, background: `${sc}14`, border: `1px solid ${sc}28`, fontSize: 10.5, color: sc }}>
-          <span style={{ width: 5, height: 5, borderRadius: "50%", background: sc, display: "inline-block" }} />
-          {c.status}
-        </div>
+      <div style={{ color: "rgba(255,255,255,0.4)", marginBottom: 3 }}>{label}</div>
+      <div style={{ color: "var(--text-1)", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+        ${typeof val === "number" ? val.toFixed(4) : "–"}
       </div>
-
-      {/* Stats row */}
-      <div style={{ display: "flex", gap: 20, paddingBottom: 14, borderBottom: "1px solid rgba(255,255,255,0.06)", flexWrap: "wrap" }}>
-        {[
-          { label: "Geladen",    value: m.models_loaded_count ?? m.models_loaded ?? models.filter(m => m.loaded !== false).length ?? "–" },
-          { label: "Verfügbar",  value: m.models_available ?? models.length ?? "–" },
-          { label: "Kontext",    value: m.context_length ? `${m.context_length.toLocaleString()} Tokens` : null },
-          { label: "API",        value: m.api_url ?? m.base_url ?? null },
-        ].filter(k => k.value != null).map(({ label, value }) => (
-          <div key={label}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text-1)", lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{String(value)}</div>
-            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 3 }}>{label}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Model list */}
-      {models.length > 0 && (
-        <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 4 }}>
-          <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.25)", marginBottom: 4 }}>
-            Modelle ({models.length})
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-            {models.slice(0, 12).map((model, i) => {
-              const name = typeof model === "string" ? model : (model.name ?? model.id ?? String(i));
-              const loaded = model.loaded !== false;
-              return (
-                <span key={i} style={{
-                  fontSize: 10.5, padding: "3px 10px", borderRadius: 8,
-                  background: loaded ? "rgba(139,92,246,0.12)" : "rgba(255,255,255,0.04)",
-                  border: `1px solid ${loaded ? "rgba(139,92,246,0.28)" : "rgba(255,255,255,0.07)"}`,
-                  color: loaded ? "#a78bfa" : "rgba(255,255,255,0.3)",
-                  fontFamily: "'JetBrains Mono', monospace",
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200,
-                }}>
-                  {name}
-                </span>
-              );
-            })}
-            {models.length > 12 && (
-              <span style={{ fontSize: 10.5, color: "rgba(255,255,255,0.2)", alignSelf: "center" }}>+{models.length - 12} weitere</span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Usage / Credits Section */}
-      {m.usage && (
-        <UsageSection usage={m.usage} />
-      )}
-
-      {c.error && (
-        <div style={{ marginTop: 10, fontSize: 11, color: "#f87171", background: "rgba(248,113,113,0.07)", border: "1px solid rgba(248,113,113,0.14)", borderRadius: 8, padding: "6px 12px" }}>
-          {c.error}
-        </div>
-      )}
     </div>
   );
 }
 
-/* ── Usage / Credits Card ────────────────────────────────────── */
-function UsageSection({ usage: u }) {
-  const isOR = u.provider === "openrouter";
-  const accent = isOR ? "#8B5CF6" : "#10a37f"; // OpenRouter violet, OpenAI green
+/* ── AI connector card ───────────────────────────────────────── */
+function AiConnectorCard({ connector: c }) {
+  const m   = c.metrics ?? {};
+  const u   = m.usage ?? null;
+  const pm  = providerMeta(u, c.config?.base_url);
+  const SC  = { online: "#34d399", warning: "#fbbf24", offline: "#f87171", error: "#f87171" };
+  const sc  = SC[c.status] ?? "rgba(255,255,255,0.25)";
 
-  const used      = u.credits_used;
-  const limit     = u.credits_limit;
-  const remaining = u.credits_remaining;
-  const pct       = (limit && used != null) ? Math.min(100, (used / limit) * 100) : null;
-  const barColor  = pct > 85 ? "#f87171" : pct > 60 ? "#fbbf24" : "#34d399";
+  const models  = m.available_models ?? m.models_loaded ?? [];
+  const used    = u?.credits_used;
+  const limit   = u?.credits_limit;
+  const remaining = u?.credits_remaining;
+  const pct     = (limit && used != null) ? Math.min(100, (used / limit) * 100) : null;
+  const barCol  = pct > 85 ? "#f87171" : pct > 60 ? "#fbbf24" : "#34d399";
+
+  // Fetch metric history from StatusSnapshot
+  const [history, setHistory] = useState([]);
+  useEffect(() => {
+    api.status.metricHistory(c.id, "usage.credits_used", 168, 40)
+      .then(d => {
+        if (d?.labels?.length) {
+          setHistory(d.labels.map((ts, i) => ({
+            t: new Date(ts).toLocaleDateString("de", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }),
+            v: d.values[i],
+          })));
+        }
+      })
+      .catch(() => {});
+  }, [c.id]);
 
   return (
     <div style={{
-      marginTop: 14,
-      padding: "12px 14px",
-      background: `rgba(${isOR ? "139,92,246" : "16,163,127"},0.06)`,
-      border: `1px solid rgba(${isOR ? "139,92,246" : "16,163,127"},0.16)`,
-      borderRadius: 10,
+      background: `rgba(${pm.rgb},0.05)`,
+      border: `1px solid rgba(${pm.rgb},0.18)`,
+      borderRadius: 18,
+      overflow: "hidden",
     }}>
-      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: `rgba(${isOR ? "167,139,250" : "52,211,153"},0.7)`, marginBottom: 10 }}>
-        {isOR ? "OpenRouter Credits" : "OpenAI Nutzung"} {u.period ? `· ${u.period}` : ""}
-      </div>
-
-      <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginBottom: pct != null ? 10 : 0 }}>
-        {used != null && (
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text-1)", fontVariantNumeric: "tabular-nums" }}>
-              ${used.toFixed(4)}
-            </div>
-            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>Verbraucht</div>
-          </div>
-        )}
-        {remaining != null && (
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "#34d399", fontVariantNumeric: "tabular-nums" }}>
-              ${remaining.toFixed(2)}
-            </div>
-            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>Verbleibend</div>
-          </div>
-        )}
-        {limit != null && (
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "rgba(255,255,255,0.5)", fontVariantNumeric: "tabular-nums" }}>
-              ${limit.toFixed(2)}
-            </div>
-            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>Limit</div>
-          </div>
-        )}
-        {u.is_free_tier && (
-          <div style={{ alignSelf: "center", fontSize: 10, padding: "3px 8px", borderRadius: 6, background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.2)", color: "#34d399" }}>
-            Free Tier
-          </div>
-        )}
-        {u.plan && (
-          <div style={{ alignSelf: "center", fontSize: 10, color: "rgba(255,255,255,0.35)" }}>
-            Plan: {u.plan}
-          </div>
-        )}
-      </div>
-
-      {pct != null && (
-        <div>
-          <div style={{ height: 5, borderRadius: 3, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${pct}%`, background: barColor, borderRadius: 3, transition: "width 0.4s ease" }} />
-          </div>
-          <div style={{ fontSize: 9.5, color: "rgba(255,255,255,0.25)", marginTop: 4, textAlign: "right" }}>
-            {pct.toFixed(1)}% verbraucht
+      {/* ── Header ── */}
+      <div style={{
+        padding: "16px 20px", display: "flex", alignItems: "center", gap: 12,
+        borderBottom: `1px solid rgba(${pm.rgb},0.10)`,
+        background: `rgba(${pm.rgb},0.04)`,
+      }}>
+        <div style={{
+          width: 42, height: 42, borderRadius: 12, flexShrink: 0,
+          background: `rgba(${pm.rgb},0.16)`, border: `1px solid rgba(${pm.rgb},0.30)`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          color: pm.accent, fontWeight: 800, fontSize: 13, letterSpacing: "-0.02em",
+        }}>
+          {pm.short}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-1)", lineHeight: 1 }}>{c.name}</div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 3 }}>
+            {pm.label} · {m.models_available ?? models.length ?? 0} Modelle
+            {u?.is_free_tier && <span style={{ marginLeft: 6, color: "#34d399" }}>· Free Tier</span>}
           </div>
         </div>
-      )}
-
-      {used == null && remaining == null && (
-        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
-          Keine Usage-Daten verfügbar — API-Key benötigt Billing-Berechtigung
+        <div style={{
+          display: "flex", alignItems: "center", gap: 5, padding: "4px 10px",
+          borderRadius: 20, background: `${sc}14`, border: `1px solid ${sc}28`,
+          fontSize: 10.5, color: sc, flexShrink: 0,
+        }}>
+          <span style={{ width: 5, height: 5, borderRadius: "50%", background: sc }} />
+          {c.status}
         </div>
-      )}
+      </div>
+
+      <div style={{ padding: "20px" }}>
+
+        {/* ── Credit Stats ── */}
+        {u ? (
+          <>
+            <div style={{ display: "flex", gap: 0, marginBottom: 18 }}>
+              {[
+                { label: "Verbraucht",   val: used != null     ? `$${used.toFixed(4)}`      : "–", col: "var(--text-1)", big: true },
+                { label: "Verbleibend",  val: remaining != null ? `$${remaining.toFixed(2)}` : "–", col: "#34d399" },
+                { label: "Limit",        val: limit != null    ? `$${limit.toFixed(2)}`      : "∞",  col: "rgba(255,255,255,0.4)" },
+                ...(u.plan ? [{ label: "Plan", val: u.plan, col: "rgba(255,255,255,0.5)" }] : []),
+                ...(u.period ? [{ label: "Zeitraum", val: u.period, col: "rgba(255,255,255,0.4)" }] : []),
+              ].map(({ label, val, col, big }, i) => (
+                <div key={label} style={{
+                  flex: 1, padding: "12px 14px",
+                  borderRight: i < 2 ? "1px solid rgba(255,255,255,0.06)" : "none",
+                }}>
+                  <div style={{
+                    fontSize: big ? 24 : 18, fontWeight: 700, color: col, lineHeight: 1,
+                    fontVariantNumeric: "tabular-nums", letterSpacing: "-0.02em",
+                  }}>
+                    {val}
+                  </div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.28)", marginTop: 5, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                    {label}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Credit meter */}
+            {pct != null && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5, fontSize: 10, color: "rgba(255,255,255,0.3)" }}>
+                  <span>Credit-Verbrauch</span>
+                  <span style={{ color: barCol, fontWeight: 600 }}>{pct.toFixed(1)}%</span>
+                </div>
+                <div style={{ height: 6, borderRadius: 3, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                  <div style={{
+                    height: "100%", width: `${pct}%`, borderRadius: 3,
+                    background: `linear-gradient(90deg, ${pm.accent}, ${barCol})`,
+                    transition: "width 0.6s ease",
+                    boxShadow: `0 0 8px ${barCol}60`,
+                  }} />
+                </div>
+              </div>
+            )}
+
+            {used == null && (
+              <div style={{ marginBottom: 16, fontSize: 11, color: "rgba(255,255,255,0.28)", padding: "8px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8 }}>
+                Keine Usage-Daten — API-Key benötigt Billing-Berechtigung
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{ marginBottom: 16, fontSize: 11, color: "rgba(255,255,255,0.28)" }}>
+            Kein Usage-Tracking für lokale Server
+          </div>
+        )}
+
+        {/* ── History Chart ── */}
+        {history.length >= 2 ? (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.25)", marginBottom: 10 }}>
+              Verbrauchsverlauf (letzte 7 Tage)
+            </div>
+            <ResponsiveContainer width="100%" height={120}>
+              <AreaChart data={history} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+                <defs>
+                  <linearGradient id={`grad-${c.id}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={pm.accent} stopOpacity={0.35} />
+                    <stop offset="100%" stopColor={pm.accent} stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="t" tick={{ fontSize: 9, fill: "rgba(255,255,255,0.25)" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 9, fill: "rgba(255,255,255,0.25)" }} tickLine={false} axisLine={false} tickFormatter={v => `$${v.toFixed(3)}`} width={52} />
+                <Tooltip content={<ChartTooltip />} cursor={{ stroke: `rgba(${pm.rgb},0.3)`, strokeWidth: 1 }} />
+                <Area
+                  type="monotone" dataKey="v" stroke={pm.accent} strokeWidth={2}
+                  fill={`url(#grad-${c.id})`} dot={false} activeDot={{ r: 4, fill: pm.accent, strokeWidth: 0 }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        ) : history.length === 0 && u ? (
+          <div style={{ marginBottom: 20, padding: "14px", background: "rgba(255,255,255,0.02)", borderRadius: 10, textAlign: "center" }}>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>Verlaufsdaten werden gesammelt — nach dem ersten Poll-Zyklus (60s) erscheint hier ein Chart</div>
+          </div>
+        ) : null}
+
+        {/* ── Model list ── */}
+        {models.length > 0 && (
+          <div>
+            <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.22)", marginBottom: 8 }}>
+              Modelle ({models.length})
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, maxHeight: 80, overflow: "hidden" }}>
+              {models.slice(0, 16).map((model, i) => {
+                const name = typeof model === "string" ? model : (model.name ?? model.id ?? String(i));
+                return (
+                  <span key={i} style={{
+                    fontSize: 10, padding: "3px 9px", borderRadius: 6,
+                    background: `rgba(${pm.rgb},0.10)`, border: `1px solid rgba(${pm.rgb},0.22)`,
+                    color: pm.accent, fontFamily: "'JetBrains Mono', monospace",
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180,
+                  }}>
+                    {name}
+                  </span>
+                );
+              })}
+              {models.length > 16 && (
+                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", alignSelf: "center" }}>+{models.length - 16} weitere</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {c.error && (
+          <div style={{ marginTop: 12, fontSize: 11, color: "#f87171", background: "rgba(248,113,113,0.07)", border: "1px solid rgba(248,113,113,0.14)", borderRadius: 8, padding: "7px 12px" }}>
+            {c.error}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -374,7 +427,7 @@ export default function LabCosts() {
           <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 12 }}>
             AI Server ({aiConnectors.length})
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(420px, 1fr))", gap: 16 }}>
             {aiConnectors.map(c => <AiConnectorCard key={c.id} connector={c} />)}
           </div>
         </div>
