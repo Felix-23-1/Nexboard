@@ -3,7 +3,7 @@
  * Two-column layout: service grid left, fleet event feed right.
  */
 import { useEffect, useState } from "react";
-import { RefreshCw, Plug, Search, AlertTriangle, CheckCircle, X, HardDrive, Lock } from "lucide-react";
+import { RefreshCw, Plug, Search, AlertTriangle, CheckCircle, X, HardDrive, Lock, GripVertical, Eye, EyeOff, LayoutGrid } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import ConnectorIcon from "../components/ConnectorIcon";
@@ -499,15 +499,144 @@ function HostGauges({ connector: c }) {
   );
 }
 
+/* ── Widget layout system ──────────────────────────────────────── */
+const LAYOUT_KEY = "nexboard_dashboard_layout";
+
+const DEFAULT_LAYOUT = {
+  showFleet:  true,
+  showEvents: true,
+  center:     ["gauges", "pills", "services"],
+  hidden:     [],
+};
+
+const CENTER_DEFS = [
+  { id: "gauges",   label: "Host Gauges" },
+  { id: "pills",    label: "Status Pills" },
+  { id: "services", label: "Suche & Services" },
+];
+
+function loadLayout() {
+  try {
+    const raw = localStorage.getItem(LAYOUT_KEY);
+    if (raw) return { ...DEFAULT_LAYOUT, ...JSON.parse(raw) };
+  } catch {}
+  return { ...DEFAULT_LAYOUT };
+}
+
+function saveLayout(l) {
+  try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(l)); } catch {}
+}
+
+/* ── WidgetShell ─────────────────────────────────────────────── */
+function WidgetShell({ id, label, editMode, hidden, onToggleHide, onDragStart, onDragOver, onDrop, isDragOver, children }) {
+  if (!editMode && hidden) return null;
+
+  return (
+    <div
+      draggable={editMode}
+      onDragStart={editMode ? e => { e.dataTransfer.effectAllowed = "move"; onDragStart(id); } : undefined}
+      onDragOver={editMode ? e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; onDragOver(id); } : undefined}
+      onDrop={editMode ? e => { e.preventDefault(); onDrop(id); } : undefined}
+      style={{
+        outline: isDragOver ? "2px solid rgba(245,158,11,0.55)" : "2px solid transparent",
+        outlineOffset: 3,
+        borderRadius: 16,
+        transition: "outline 0.12s",
+      }}
+    >
+      {/* Drag handle bar */}
+      {editMode && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "5px 10px", marginBottom: 7,
+          background: "rgba(245,158,11,0.07)",
+          border: "1px solid rgba(245,158,11,0.18)",
+          borderRadius: 9, cursor: "grab",
+        }}>
+          <GripVertical size={13} style={{ color: "rgba(245,158,11,0.55)", flexShrink: 0 }} />
+          <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(245,158,11,0.65)", flex: 1, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+            {label}
+          </span>
+          <button
+            onClick={e => { e.stopPropagation(); onToggleHide(id); }}
+            style={{
+              background: "none", cursor: "pointer", borderRadius: 6,
+              border: `1px solid ${hidden ? "rgba(245,158,11,0.4)" : "rgba(255,255,255,0.12)"}`,
+              padding: "2px 8px", fontSize: 10, fontWeight: 600,
+              color: hidden ? "#F59E0B" : "rgba(255,255,255,0.35)",
+              display: "flex", alignItems: "center", gap: 5,
+            }}
+          >
+            {hidden ? <><Eye size={11} /> Einblenden</> : <><EyeOff size={11} /> Ausblenden</>}
+          </button>
+        </div>
+      )}
+      {/* Widget content */}
+      {!hidden && (
+        <div style={editMode ? { pointerEvents: "none", userSelect: "none", opacity: 0.75 } : {}}>
+          {children}
+        </div>
+      )}
+      {/* Hidden placeholder */}
+      {editMode && hidden && (
+        <div style={{ padding: "14px 16px", textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.02)", borderRadius: 10, border: "1px dashed rgba(255,255,255,0.07)" }}>
+          Widget ausgeblendet
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Dashboard ────────────────────────────────────────────────── */
 export default function Dashboard() {
-  const [data, setData]             = useState(null);
-  const [loading, setLoading]       = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError]           = useState(null);
-  const [search, setSearch]         = useState("");
+  const [data,        setData]        = useState(null);
+  const [loading,     setLoading]     = useState(true);
+  const [refreshing,  setRefreshing]  = useState(false);
+  const [error,       setError]       = useState(null);
+  const [search,      setSearch]      = useState("");
   const [primaryHost, setPrimaryHost] = useState(null);
+  const [layout,      setLayout]      = useState(loadLayout);
+  const [editMode,    setEditMode]    = useState(false);
+  const [dragId,      setDragId]      = useState(null);
+  const [dragOver,    setDragOver]    = useState(null);
   const now = useClock();
+
+  function updLayout(patch) {
+    setLayout(prev => {
+      const next = { ...prev, ...patch };
+      saveLayout(next);
+      return next;
+    });
+  }
+
+  function handleDragStart(id) { setDragId(id); }
+  function handleDragOver(id)  { if (id !== dragId) setDragOver(id); }
+  function handleDrop(targetId) {
+    if (!dragId || dragId === targetId) { setDragId(null); setDragOver(null); return; }
+    setLayout(prev => {
+      const order = [...prev.center];
+      const from  = order.indexOf(dragId);
+      const to    = order.indexOf(targetId);
+      if (from === -1 || to === -1) return prev;
+      order.splice(from, 1);
+      order.splice(to, 0, dragId);
+      const next = { ...prev, center: order };
+      saveLayout(next);
+      return next;
+    });
+    setDragId(null);
+    setDragOver(null);
+  }
+  function handleToggleHide(id) {
+    setLayout(prev => {
+      const hidden = prev.hidden.includes(id)
+        ? prev.hidden.filter(h => h !== id)
+        : [...prev.hidden, id];
+      const next = { ...prev, hidden };
+      saveLayout(next);
+      return next;
+    });
+  }
 
   async function load(showRefresh = false) {
     if (showRefresh) setRefreshing(true);
@@ -624,7 +753,7 @@ export default function Dashboard() {
           <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 6, letterSpacing: "0.01em" }}>{dateStr}</div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 16px", borderRadius: 20, background: `${overallColor}14`, border: `1px solid ${overallColor}2A`, fontSize: 12.5, fontWeight: 500, color: overallColor }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", display: "inline-block", background: overallColor, boxShadow: `0 0 8px ${overallColor}` }} />
             {overallText}
@@ -633,89 +762,188 @@ export default function Dashboard() {
             <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />
             Aktualisieren
           </button>
+          <button
+            onClick={() => setEditMode(m => !m)}
+            className="btn-ghost"
+            style={{
+              display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, padding: "7px 14px",
+              ...(editMode ? { borderColor: "rgba(245,158,11,0.45)", color: "#F59E0B", background: "rgba(245,158,11,0.08)" } : {}),
+            }}
+          >
+            <LayoutGrid size={13} />
+            {editMode ? "Fertig" : "Layout"}
+          </button>
         </div>
       </div>
+
+      {/* ── Edit mode: panel + hint bar ────────────────────────── */}
+      {editMode && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", background: "rgba(245,158,11,0.05)", border: "1px solid rgba(245,158,11,0.15)", borderRadius: 10 }}>
+          <LayoutGrid size={11} style={{ color: "rgba(245,158,11,0.55)", flexShrink: 0 }} />
+          <span style={{ fontSize: 9.5, fontWeight: 700, color: "rgba(245,158,11,0.55)", letterSpacing: "0.1em", textTransform: "uppercase", marginRight: 4 }}>Panels:</span>
+          {[
+            { key: "showFleet",  label: "Fleet Panel", show: linuxHosts.length > 0 },
+            { key: "showEvents", label: "Event Feed",  show: true },
+          ].filter(p => p.show).map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => updLayout({ [key]: !layout[key] })}
+              style={{
+                padding: "3px 10px", borderRadius: 20, fontSize: 10.5, fontWeight: 600,
+                cursor: "pointer", border: "1px solid", display: "flex", alignItems: "center", gap: 5,
+                borderColor: layout[key] ? "rgba(16,185,129,0.4)"  : "rgba(255,255,255,0.12)",
+                background:  layout[key] ? "rgba(16,185,129,0.08)" : "rgba(255,255,255,0.03)",
+                color:       layout[key] ? "#10B981"                : "rgba(255,255,255,0.38)",
+              }}
+            >
+              {layout[key] ? <Eye size={10} /> : <EyeOff size={10} />}
+              {label}
+            </button>
+          ))}
+          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.18)", marginLeft: 6 }}>
+            Widgets in der Mitte ziehen zum Umordnen · Ausblenden zum Deaktivieren
+          </span>
+        </div>
+      )}
 
       {/* ── Three-column main layout ────────────────────────────── */}
       <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flex: 1 }}>
 
-        {/* LEFT: Fleet panel – only when linux hosts configured */}
-        {linuxHosts.length > 0 && (
+        {/* LEFT: Fleet panel */}
+        {linuxHosts.length > 0 && layout.showFleet && (
           <FleetPanel hosts={linuxHosts} selected={primaryHost} onSelect={setPrimaryHost} />
         )}
 
-        {/* CENTER: host gauges + stat pills + search + groups */}
+        {/* CENTER: modular widget stack */}
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 20 }}>
+          {layout.center.map(wid => {
+            const def      = CENTER_DEFS.find(d => d.id === wid);
+            const isHidden = layout.hidden.includes(wid);
 
-          {/* Selected host ring gauges */}
-          {selectedHost && selectedHost.metrics?.cpu_pct != null && (
-            <HostGauges connector={selectedHost} />
-          )}
-
-          {/* Stat pills – filter out linux hosts already shown in fleet panel */}
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {[
-              { label: "Services",   value: stats.total,       color: "var(--text-2)" },
-              { label: "Online",     value: stats.online,      color: "#34d399" },
-              ...(stats.warning > 0 ? [{ label: "Warnung",   value: stats.warning,   color: "#fbbf24" }] : []),
-              ...(stats.offline > 0 ? [{ label: "Offline",   value: stats.offline,   color: "#f87171" }] : []),
-              ...(stats.hasProxmox  ? [{ label: "VMs",       value: stats.vmsRunning, color: "#FCD34D" }] : []),
-              ...(stats.hasDocker   ? [{ label: "Container", value: stats.containers, color: "#60a5fa" }] : []),
-            ].map(({ label, value, color }) => (
-              <div key={label} style={{ padding: "5px 14px", borderRadius: 20, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", gap: 7 }}>
-                <span style={{ fontWeight: 700, color, fontSize: 14, fontVariantNumeric: "tabular-nums" }}>{value}</span>
-                <span style={{ color: "var(--text-3)", fontSize: 11 }}>{label}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Search */}
-          <div style={{ position: "relative", maxWidth: 380 }}>
-            <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-3)", pointerEvents: "none" }} />
-            <input className="nb-input" placeholder="Services filtern…" value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 34 }} />
-          </div>
-
-          {/* Service groups */}
-          {groups.length === 0 ? (
-            <div className="card" style={{ textAlign: "center", padding: "48px 20px" }}>
-              <Plug size={36} style={{ color: "rgba(255,255,255,0.12)", margin: "0 auto 12px" }} />
-              <p style={{ color: "var(--text-2)", fontSize: 13, marginBottom: 16 }}>
-                {search ? "Keine Services gefunden." : "Noch keine Connectors konfiguriert."}
-              </p>
-              {!search && (
-                <Link to="/connectors" className="btn-primary" style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13 }}>
-                  <Plug size={13} /> Ersten Connector hinzufügen
-                </Link>
-              )}
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 32, paddingBottom: 32 }}>
-              {groups.map(({ name, connectors }) => (
-                <div key={name}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-                    <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-3)" }}>
-                      {name}
-                    </span>
-                    <span style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "1px 7px", fontSize: 9.5, fontWeight: 600, color: "var(--text-3)" }}>
-                      {connectors.length}
-                    </span>
-                    <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.055)" }} />
+            // Widget content per ID
+            let content = null;
+            if (wid === "gauges") {
+              if (selectedHost && selectedHost.metrics?.cpu_pct != null) {
+                content = <HostGauges connector={selectedHost} />;
+              } else if (editMode) {
+                content = (
+                  <div style={{ padding: "14px 16px", textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.025)", borderRadius: 12, border: "1px dashed rgba(255,255,255,0.07)" }}>
+                    Host Gauges — Kein Linux-Host ausgewählt
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
-                    {connectors.map(c =>
-                      c.type === "bookmarks"
-                        ? <BookmarkGroupTile key={c.id} connector={c} />
-                        : <ServiceTile key={c.id} connector={c} />
-                    )}
-                  </div>
+                );
+              }
+            }
+
+            if (wid === "pills") {
+              content = (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {[
+                    { label: "Services",   value: stats.total,        color: "var(--text-2)" },
+                    { label: "Online",     value: stats.online,       color: "#34d399" },
+                    ...(stats.warning > 0 ? [{ label: "Warnung",   value: stats.warning,    color: "#fbbf24" }] : []),
+                    ...(stats.offline > 0 ? [{ label: "Offline",   value: stats.offline,    color: "#f87171" }] : []),
+                    ...(stats.hasProxmox  ? [{ label: "VMs",       value: stats.vmsRunning, color: "#FCD34D" }] : []),
+                    ...(stats.hasDocker   ? [{ label: "Container", value: stats.containers, color: "#60a5fa" }] : []),
+                  ].map(({ label, value, color }) => (
+                    <div key={label} style={{ padding: "5px 14px", borderRadius: 20, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", gap: 7 }}>
+                      <span style={{ fontWeight: 700, color, fontSize: 14, fontVariantNumeric: "tabular-nums" }}>{value}</span>
+                      <span style={{ color: "var(--text-3)", fontSize: 11 }}>{label}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
+              );
+            }
+
+            if (wid === "services") {
+              content = (
+                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                  {/* Search */}
+                  <div style={{ position: "relative", maxWidth: 380 }}>
+                    <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-3)", pointerEvents: "none" }} />
+                    <input className="nb-input" placeholder="Services filtern…" value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 34 }} />
+                  </div>
+
+                  {/* Service groups */}
+                  {groups.length === 0 ? (
+                    <div className="card" style={{ textAlign: "center", padding: "48px 20px" }}>
+                      <Plug size={36} style={{ color: "rgba(255,255,255,0.12)", margin: "0 auto 12px" }} />
+                      <p style={{ color: "var(--text-2)", fontSize: 13, marginBottom: 16 }}>
+                        {search ? "Keine Services gefunden." : "Noch keine Connectors konfiguriert."}
+                      </p>
+                      {!search && (
+                        <Link to="/connectors" className="btn-primary" style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13 }}>
+                          <Plug size={13} /> Ersten Connector hinzufügen
+                        </Link>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 32, paddingBottom: 32 }}>
+                      {groups.map(({ name, connectors }) => (
+                        <div key={name}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                            <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-3)" }}>
+                              {name}
+                            </span>
+                            <span style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "1px 7px", fontSize: 9.5, fontWeight: 600, color: "var(--text-3)" }}>
+                              {connectors.length}
+                            </span>
+                            <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.055)" }} />
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
+                            {connectors.map(c =>
+                              c.type === "bookmarks"
+                                ? <BookmarkGroupTile key={c.id} connector={c} />
+                                : <ServiceTile key={c.id} connector={c} />
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            // Skip invisible widgets outside edit mode
+            if (!editMode && (content === null || isHidden)) return null;
+
+            return (
+              <WidgetShell
+                key={wid}
+                id={wid}
+                label={def?.label ?? wid}
+                editMode={editMode}
+                hidden={isHidden}
+                onToggleHide={handleToggleHide}
+                onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                isDragOver={dragOver === wid}
+              >
+                {content}
+              </WidgetShell>
+            );
+          })}
         </div>
 
-        {/* Right: event feed */}
-        <EventFeed connectors={data?.connectors ?? []} />
+        {/* RIGHT: event feed */}
+        {layout.showEvents && (
+          <div style={{ flexShrink: 0 }}>
+            {editMode && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", marginBottom: 7, background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.18)", borderRadius: 9 }}>
+                <GripVertical size={13} style={{ color: "rgba(245,158,11,0.4)", flexShrink: 0 }} />
+                <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(245,158,11,0.65)", flex: 1, letterSpacing: "0.1em", textTransform: "uppercase" }}>Event Feed</span>
+                <button
+                  onClick={() => updLayout({ showEvents: false })}
+                  style={{ background: "none", border: "1px solid rgba(255,255,255,0.12)", cursor: "pointer", padding: "2px 8px", color: "rgba(255,255,255,0.35)", display: "flex", alignItems: "center", gap: 5, borderRadius: 6, fontSize: 10, fontWeight: 600 }}
+                >
+                  <EyeOff size={11} /> Ausblenden
+                </button>
+              </div>
+            )}
+            <EventFeed connectors={data?.connectors ?? []} />
+          </div>
+        )}
       </div>
     </div>
   );

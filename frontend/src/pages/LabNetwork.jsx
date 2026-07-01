@@ -283,10 +283,12 @@ export default function LabNetwork() {
     try {
       const d = await api.status.detailed();
       setData(d);
-      const hosts = (d?.connectors ?? []).filter(c => c.type === "linux_probe" || c.type === "linux_ssh");
-      if (hosts.length && (selected === null || !hosts.find(h => h.id === selected))) {
-        setSelected(hosts[0].id);
-      }
+      const hosts = (d?.connectors ?? []).filter(c => c.type === "linux_probe");
+      // Functional updater verhindert stale-closure-Bug beim Interval
+      setSelected(prev => {
+        if (prev && hosts.find(h => h.id === prev)) return prev;
+        return hosts[0]?.id ?? null;
+      });
     } catch (e) {
       setError(e.message);
     } finally {
@@ -302,7 +304,7 @@ export default function LabNetwork() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const hosts   = (data?.connectors ?? []).filter(c => c.type === "linux_probe" || c.type === "linux_ssh");
+  const hosts   = (data?.connectors ?? []).filter(c => c.type === "linux_probe");
   const current = hosts.find(h => h.id === selected) ?? null;
   const SC = { online: "#34d399", warning: "#fbbf24", offline: "#f87171", error: "#f87171", critical: "#f87171" };
 
