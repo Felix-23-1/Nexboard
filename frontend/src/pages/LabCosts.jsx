@@ -122,9 +122,94 @@ function AiConnectorCard({ connector: c }) {
         </div>
       )}
 
+      {/* Usage / Credits Section */}
+      {m.usage && (
+        <UsageSection usage={m.usage} />
+      )}
+
       {c.error && (
         <div style={{ marginTop: 10, fontSize: 11, color: "#f87171", background: "rgba(248,113,113,0.07)", border: "1px solid rgba(248,113,113,0.14)", borderRadius: 8, padding: "6px 12px" }}>
           {c.error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Usage / Credits Card ────────────────────────────────────── */
+function UsageSection({ usage: u }) {
+  const isOR = u.provider === "openrouter";
+  const accent = isOR ? "#8B5CF6" : "#10a37f"; // OpenRouter violet, OpenAI green
+
+  const used      = u.credits_used;
+  const limit     = u.credits_limit;
+  const remaining = u.credits_remaining;
+  const pct       = (limit && used != null) ? Math.min(100, (used / limit) * 100) : null;
+  const barColor  = pct > 85 ? "#f87171" : pct > 60 ? "#fbbf24" : "#34d399";
+
+  return (
+    <div style={{
+      marginTop: 14,
+      padding: "12px 14px",
+      background: `rgba(${isOR ? "139,92,246" : "16,163,127"},0.06)`,
+      border: `1px solid rgba(${isOR ? "139,92,246" : "16,163,127"},0.16)`,
+      borderRadius: 10,
+    }}>
+      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: `rgba(${isOR ? "167,139,250" : "52,211,153"},0.7)`, marginBottom: 10 }}>
+        {isOR ? "OpenRouter Credits" : "OpenAI Nutzung"} {u.period ? `· ${u.period}` : ""}
+      </div>
+
+      <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginBottom: pct != null ? 10 : 0 }}>
+        {used != null && (
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text-1)", fontVariantNumeric: "tabular-nums" }}>
+              ${used.toFixed(4)}
+            </div>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>Verbraucht</div>
+          </div>
+        )}
+        {remaining != null && (
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#34d399", fontVariantNumeric: "tabular-nums" }}>
+              ${remaining.toFixed(2)}
+            </div>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>Verbleibend</div>
+          </div>
+        )}
+        {limit != null && (
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "rgba(255,255,255,0.5)", fontVariantNumeric: "tabular-nums" }}>
+              ${limit.toFixed(2)}
+            </div>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>Limit</div>
+          </div>
+        )}
+        {u.is_free_tier && (
+          <div style={{ alignSelf: "center", fontSize: 10, padding: "3px 8px", borderRadius: 6, background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.2)", color: "#34d399" }}>
+            Free Tier
+          </div>
+        )}
+        {u.plan && (
+          <div style={{ alignSelf: "center", fontSize: 10, color: "rgba(255,255,255,0.35)" }}>
+            Plan: {u.plan}
+          </div>
+        )}
+      </div>
+
+      {pct != null && (
+        <div>
+          <div style={{ height: 5, borderRadius: 3, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${pct}%`, background: barColor, borderRadius: 3, transition: "width 0.4s ease" }} />
+          </div>
+          <div style={{ fontSize: 9.5, color: "rgba(255,255,255,0.25)", marginTop: 4, textAlign: "right" }}>
+            {pct.toFixed(1)}% verbraucht
+          </div>
+        </div>
+      )}
+
+      {used == null && remaining == null && (
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
+          Keine Usage-Daten verfügbar — API-Key benötigt Billing-Berechtigung
         </div>
       )}
     </div>

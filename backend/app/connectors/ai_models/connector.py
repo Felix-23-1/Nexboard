@@ -2,8 +2,10 @@
 AIModelsConnector — pollt lokale AI-Model-Server.
 Unterstützt: Ollama, vLLM, llama.cpp (OpenAI-kompatibler Endpunkt), OpenAI-kompatibel.
 Kein GPU-SSH nötig — reine HTTP-Abfrage.
+Usage-Tracking: OpenRouter Credits-API, OpenAI Billing-API.
 """
 import asyncio
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -233,6 +235,9 @@ async def _fetch_openai_compat(client: httpx.AsyncClient, base_url: str, server_
         except Exception:
             pass
 
+    # Usage / Credits abrufen (OpenRouter + OpenAI)
+    usage = await _fetch_usage(client, base_url)
+
     status = ConnectorStatus.ONLINE if models else ConnectorStatus.WARNING
     return ConnectorResult(status=status, metrics={
         "server_type":         server_type,
@@ -242,4 +247,81 @@ async def _fetch_openai_compat(client: httpx.AsyncClient, base_url: str, server_
         "models_available":    len(models),
         "available_models":    models[:20],
         "idle":                len(models) == 0,
+        "usage":               usage,   # None wenn nicht verfügbar
     })
+
+
+# ─── Usage / Credits ──────────────────────────────────────────────────────────
+
+async def _fetch_usage(client: httpx.AsyncClient, base_url: str) -> dict | None:
+    """
+    Ruft Verbrauchs-/Credits-Daten ab.
+    OpenRouter: GET /api/v1/auth/key  → credits used/remaining
+    OpenAI:     GET /dashboard/billing/usage + /subscription → monthly spend
+    Gibt None zurück wenn der Server keine Usage-API hat.
+    """
+    url_lower = base_url.lower()
+
+    # ── OpenRouter ──────────────────────────────────────────────────────────
+    if "openrouter.ai" in url_lower:
+        try:
+            r = await client.get("https://openrouter.ai/api/v1/auth/key", timeout=8)
+            if r.status_code == 200:
+                d = r.json().get("data", {})
+                usage_usd      = d.get("usage")        # float, total USD spent
+                limit_usd      = d.get("limit")        # float or None
+                is_free        = d.get("is_free_tier", False)
+                label          = d.get("label", "")
+                remaining_usd  = (limit_usd - usage_usd) if (limit_usd and usage_usd is not None) else None
+                return {
+                    "provider":       "openrouter",
+                    "label":          label,
+                    "credits_used":   round(usage_usd, 4) if usage_usd is not None else None,
+                    "credits_limit":  round(limit_usd, 2) if limit_usd else None,
+                    "credits_remaining": round(remaining_usd, 2) if remaining_usd is not None else None,
+                    "is_free_tier":   is_free,
+                    "currency":       "USD",
+                }
+        except Exception:
+            pass
+        return None
+
+    # ── OpenAI ──────────────────────────────────────────────────────────────
+    if "openai.com" in url_lower:
+        result: dict = {"provider": "openai", "currency": "USD"}
+        now = datetime.utcnow()
+
+        # Subscription (hard limit)
+        try:
+            r = await client.get(
+                "https://api.openai.com/dashboard/billing/subscription", timeout=8
+            )
+            if r.status_code == 200:
+                sub = r.json()
+                result["credits_limit"] = round(sub.get("hard_limit_usd", 0), 2)
+                result["plan"] = sub.get("plan", {}).get("title")
+        except Exception:
+            pass
+
+        # Monthly usage
+        try:
+            start = now.strftime("%Y-%m-01")
+            end   = now.strftime("%Y-%m-%d")
+            r = await client.get(
+                f"https://api.openai.com/dashboard/billing/usage?start_date={start}&end_date={end}",
+                timeout=8,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                total_cents = data.get("total_usage", 0)   # in cents
+                result["credits_used"]  = round(total_cents / 100, 4)
+                limit = result.get("credits_limit")
+                if limit:
+                    result["credits_remaining"] = round(limit - result["credits_used"], 2)
+                result["period"] = f"{start} – {end}"
+        except Exception:
+            pass
+
+        return result if len(result) > 2 else None  # mindestens ein echtes Feld
+
+    return None  # lokaler Server — keine Usage-API
