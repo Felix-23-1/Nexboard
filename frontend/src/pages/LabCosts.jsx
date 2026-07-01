@@ -190,9 +190,26 @@ function AiConnectorCard({ connector: c }) {
               </div>
             )}
 
-            {used == null && (
+            {used == null && u.provider === "openai" && (
+              <div style={{ marginBottom: 16, padding: "10px 14px", background: "rgba(16,163,127,0.06)", border: "1px solid rgba(16,163,127,0.15)", borderRadius: 10 }}>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.45)", marginBottom: 5 }}>
+                  OpenAI Billing-API ist für Standard-API-Keys nicht mehr verfügbar.
+                </div>
+                <a
+                  href="https://platform.openai.com/usage"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ fontSize: 11, color: "#10a37f", textDecoration: "none", fontWeight: 600 }}
+                  onMouseEnter={e => { e.target.style.textDecoration = "underline"; }}
+                  onMouseLeave={e => { e.target.style.textDecoration = "none"; }}
+                >
+                  Verbrauch im OpenAI Dashboard ansehen →
+                </a>
+              </div>
+            )}
+            {used == null && u.provider !== "openai" && (
               <div style={{ marginBottom: 16, fontSize: 11, color: "rgba(255,255,255,0.28)", padding: "8px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8 }}>
-                Keine Usage-Daten — API-Key benötigt Billing-Berechtigung
+                Keine Usage-Daten — API-Key prüfen
               </div>
             )}
           </>

@@ -288,12 +288,15 @@ async def _fetch_usage(client: httpx.AsyncClient, base_url: str) -> dict | None:
 
     # ── OpenAI ──────────────────────────────────────────────────────────────
     if "openai.com" in url_lower:
+        # Hinweis: OpenAI hat die /dashboard/billing/* API für Standard-API-Keys deprecated.
+        # Wir versuchen es trotzdem (funktioniert noch bei einigen älteren Accounts),
+        # geben aber immer mindestens das Provider-Objekt zurück.
         result: dict = {"provider": "openai", "currency": "USD"}
-        now = datetime.utcnow()
+        now   = datetime.utcnow()
         start = now.strftime("%Y-%m-01")
         end   = now.strftime("%Y-%m-%d")
 
-        # Legacy billing (deprecated but still active for many accounts)
+        # Legacy billing (funktioniert noch für ältere Pay-as-you-go Accounts)
         try:
             r = await client.get(
                 f"https://api.openai.com/dashboard/billing/usage?start_date={start}&end_date={end}",
@@ -324,6 +327,7 @@ async def _fetch_usage(client: httpx.AsyncClient, base_url: str) -> dict | None:
         if limit and used is not None:
             result["credits_remaining"] = round(limit - used, 2)
 
-        return result if len(result) > 2 else None  # mindestens ein echtes Feld
+        # Immer zurückgeben — auch ohne Billing-Daten (damit die Karte OpenAI-styled ist)
+        return result
 
     return None  # lokaler Server — keine Usage-API
