@@ -59,11 +59,12 @@ class AIModelsConnector(BaseConnector):
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 
+        # Kein base_url im Client — wir bauen alle URLs selbst (f"{base_url}/path").
+        # Das vermeidet httpx-URL-Merging-Probleme mit Pfad-Präfixen wie /api/v1.
         async with httpx.AsyncClient(
-            base_url=base_url,
             headers=headers,
             timeout=self._HTTP_TIMEOUT,
-            verify=False,          # self-signed TLS akzeptieren
+            verify=False,
             follow_redirects=True,
         ) as client:
 
@@ -73,28 +74,24 @@ class AIModelsConnector(BaseConnector):
                 if server_type is None:
                     return ConnectorResult(
                         status=ConnectorStatus.OFFLINE,
-                        error=detect_error or "Server nicht erreichbar oder Typ nicht erkannt",
+                        error=detect_error or "Server nicht erreichbar. Tipp: Server-Typ manuell wählen.",
                     )
 
             try:
                 if server_type == "ollama":
-                    return await _fetch_ollama(client)
+                    return await _fetch_ollama(client, base_url)
                 else:
-                    # vllm, llamacpp, openai — alle nutzen OpenAI /v1/models API
-                    return await _fetch_openai_compat(client, server_type)
+                    # vllm, llamacpp, openai, openrouter — alle nutzen <base_url>/models
+                    return await _fetch_openai_compat(client, base_url, server_type)
 
             except httpx.ConnectError:
-                return ConnectorResult(status=ConnectorStatus.OFFLINE, error="Verbindung abgelehnt")
+                return ConnectorResult(status=ConnectorStatus.OFFLINE, error=f"Verbindung zu {base_url} abgelehnt")
             except httpx.TimeoutException:
-                return ConnectorResult(status=ConnectorStatus.OFFLINE, error=f"Timeout nach {_AIModelsConnector_timeout(self)}s")
+                return ConnectorResult(status=ConnectorStatus.OFFLINE, error=f"Timeout nach {self._HTTP_TIMEOUT}s")
             except httpx.HTTPStatusError as e:
-                return ConnectorResult(status=ConnectorStatus.ERROR, error=f"HTTP {e.response.status_code}")
+                return ConnectorResult(status=ConnectorStatus.ERROR, error=f"HTTP {e.response.status_code}: {e.response.text[:120]}")
             except Exception as e:
                 return ConnectorResult(status=ConnectorStatus.ERROR, error=str(e))
-
-
-def _AIModelsConnector_timeout(self) -> int:
-    return AIModelsConnector._HTTP_TIMEOUT
 
 
 # ─── Auto-Detect ──────────────────────────────────────────────────────────────
@@ -103,39 +100,39 @@ async def _detect_server_type(client: httpx.AsyncClient, base_url: str) -> tuple
     """Probiert Ollama-Endpunkt, dann OpenAI-Compat. Gibt (Typ, Fehlermeldung) zurück."""
     last_error: str | None = None
 
-    # Ollama hat /api/tags (GET → JSON mit models-Array)
+    # Ollama: /api/tags liefert JSON mit models-Array
     try:
-        r = await client.get("/api/tags", timeout=8)
+        r = await client.get(f"{base_url}/api/tags", timeout=8)
         if r.status_code == 200 and "models" in r.json():
             return "ollama", None
     except Exception:
         pass
 
-    # OpenAI-kompatibel hat /v1/models
+    # OpenAI-kompatibel: <base_url>/models (Nutzer gibt /v1 in URL an)
     try:
-        r = await client.get("/v1/models", timeout=8)
+        r = await client.get(f"{base_url}/models", timeout=8)
         if r.status_code in (200, 401, 403):
             return "openai", None
-        last_error = f"Unerwarteter HTTP-Status {r.status_code} von {base_url}/v1/models"
+        last_error = f"HTTP {r.status_code} von {base_url}/models — Typ nicht erkannt"
     except httpx.ConnectError:
-        last_error = f"Verbindung zu {base_url} abgelehnt — Server erreichbar?"
+        last_error = f"Verbindung zu {base_url} abgelehnt. Server erreichbar?"
     except httpx.TimeoutException:
-        last_error = f"Timeout beim Verbinden mit {base_url} — Server zu langsam oder nicht erreichbar. Tipp: Server-Typ manuell auf 'openai' setzen."
+        last_error = f"Timeout ({base_url}). Tipp: Server-Typ manuell wählen."
     except Exception as e:
-        last_error = f"Fehler bei Auto-Erkennung: {e}"
+        last_error = f"Auto-Erkennung Fehler: {e}"
 
     return None, last_error
 
 
 # ─── Ollama ───────────────────────────────────────────────────────────────────
 
-async def _fetch_ollama(client: httpx.AsyncClient) -> ConnectorResult:
+async def _fetch_ollama(client: httpx.AsyncClient, base_url: str) -> ConnectorResult:
     """Ollama API: /api/tags (available) + /api/ps (running/VRAM)."""
 
     # Version
     version = None
     try:
-        r = await client.get("/api/version", timeout=5)
+        r = await client.get(f"{base_url}/api/version", timeout=5)
         if r.status_code == 200:
             version = r.json().get("version")
     except Exception:
@@ -144,7 +141,7 @@ async def _fetch_ollama(client: httpx.AsyncClient) -> ConnectorResult:
     # Alle verfügbaren Modelle
     available_models: list[dict[str, Any]] = []
     try:
-        r = await client.get("/api/tags", timeout=8)
+        r = await client.get(f"{base_url}/api/tags", timeout=8)
         r.raise_for_status()
         for m in r.json().get("models", []):
             available_models.append({
@@ -159,7 +156,7 @@ async def _fetch_ollama(client: httpx.AsyncClient) -> ConnectorResult:
     # Aktuell laufende Modelle (mit VRAM)
     loaded_models: list[dict[str, Any]] = []
     try:
-        r = await client.get("/api/ps", timeout=8)
+        r = await client.get(f"{base_url}/api/ps", timeout=8)
         if r.status_code == 200:
             for m in r.json().get("models", []):
                 vram_mb = None
@@ -193,21 +190,26 @@ async def _fetch_ollama(client: httpx.AsyncClient) -> ConnectorResult:
 
 # ─── OpenAI-kompatibel (vLLM, llama.cpp, …) ──────────────────────────────────
 
-async def _fetch_openai_compat(client: httpx.AsyncClient, server_type: str) -> ConnectorResult:
-    """Pollt /v1/models und optional /v1/completions health-Check."""
+async def _fetch_openai_compat(client: httpx.AsyncClient, base_url: str, server_type: str) -> ConnectorResult:
+    """Pollt <base_url>/models — funktioniert für OpenAI, OpenRouter, vLLM, llama.cpp.
+    Nutzer gibt die vollständige Basis-URL an, z.B.:
+      https://api.openai.com/v1
+      https://openrouter.ai/api/v1
+      http://localhost:8000/v1
+    """
 
     # Model-Liste
     models: list[dict[str, Any]] = []
     try:
-        r = await client.get("/v1/models", timeout=8)
+        r = await client.get(f"{base_url}/models", timeout=8)
         r.raise_for_status()
         data = r.json()
         for m in data.get("data", [data]) if isinstance(data, dict) else [data]:
             if isinstance(m, dict):
                 models.append({
-                    "name":   m.get("id") or m.get("model"),
-                    "vram_mb": None,       # OpenAI-API gibt kein VRAM zurück
-                    "loaded": True,
+                    "name":    m.get("id") or m.get("model"),
+                    "vram_mb": None,
+                    "loaded":  True,
                 })
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 401:
@@ -217,7 +219,7 @@ async def _fetch_openai_compat(client: httpx.AsyncClient, server_type: str) -> C
     # Version / Info — vLLM hat /health, llama.cpp hat /props
     version = None
     try:
-        r = await client.get("/props", timeout=4)
+        r = await client.get(f"{base_url}/props", timeout=4)
         if r.status_code == 200:
             props = r.json()
             version = props.get("build_info") or props.get("version")
@@ -225,7 +227,7 @@ async def _fetch_openai_compat(client: httpx.AsyncClient, server_type: str) -> C
         pass
     if not version:
         try:
-            r = await client.get("/health", timeout=4)
+            r = await client.get(f"{base_url}/health", timeout=4)
             if r.status_code == 200:
                 version = "healthy"
         except Exception:
