@@ -88,7 +88,24 @@ async def update_connector(
     if data.enabled is not None:
         connector.enabled = data.enabled
     if data.config is not None:
-        connector.config = data.config
+        # Secret-Felder (api_key, password, token, …) aus der bestehenden Config erhalten,
+        # wenn der neue Wert leer ist — verhindert versehentliches Löschen von Secrets
+        # durch das Edit-Formular, das Secret-Werte als leer/*** rendert.
+        cls = registry.get(connector.type)
+        secret_keys = (
+            {k for k, v in cls.meta.config_schema.items() if v.get("secret")}
+            if cls else set()
+        )
+        if secret_keys:
+            merged = dict(connector.config)
+            for k, v in data.config.items():
+                if k in secret_keys and (v is None or v == ""):
+                    pass  # existierenden Secret-Wert beibehalten
+                else:
+                    merged[k] = v
+            connector.config = merged
+        else:
+            connector.config = data.config
     await db.commit()
     await db.refresh(connector)
     return connector
